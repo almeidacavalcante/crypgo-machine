@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	_ "context"
 	"fmt"
 	"log"
 	"math"
@@ -15,7 +14,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Starting Binance Trading Bot...")
+	fmt.Println("🚀 Starting Binance Trading Bot...")
 	loadEnv()
 
 	client := binance.NewClient(
@@ -23,20 +22,20 @@ func main() {
 		os.Getenv("BINANCE_SECRET_KEY"),
 	)
 
-	symbol := "SOL/BRL"
+	symbol := "SOLBRL"
 	asset := "SOL"
-	quantity := 0.001
+	quantity := 0.015
 	position := false
 
 	for {
 		klines, err := client.NewKlinesService().
-			Symbol("SOLBRL").
+			Symbol(symbol).
 			Interval("1h").
 			Limit(1000).
 			Do(context.Background())
 
 		if err != nil {
-			log.Println("Error fetching market data:", err)
+			log.Println("❌ Error fetching market data:", err)
 			time.Sleep(60 * time.Second)
 			continue
 		}
@@ -49,20 +48,13 @@ func main() {
 func loadEnv() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("Error loading .env file")
+		log.Fatalf("❌ Error loading .env file: %v", err)
 	}
 }
 
-func toFloat(val interface{}) float64 {
-	switch v := val.(type) {
-	case float64:
-		return v
-	case string:
-		f, _ := strconv.ParseFloat(v, 64)
-		return f
-	default:
-		return 0
-	}
+func toFloat(val string) float64 {
+	f, _ := strconv.ParseFloat(val, 64)
+	return f
 }
 
 func movingAverage(data []*binance.Kline, window int) float64 {
@@ -71,29 +63,32 @@ func movingAverage(data []*binance.Kline, window int) float64 {
 	}
 	sum := 0.0
 	for i := len(data) - window; i < len(data); i++ {
-		closePrice, err := strconv.ParseFloat(data[i].Close, 64)
-		if err != nil {
-			continue
-		}
-		sum += closePrice
+		sum += toFloat(data[i].Close)
 	}
 	return sum / float64(window)
 }
 
 func truncate(number float64, digits int) float64 {
+	print(number, digits)
 	factor := math.Pow(10, float64(digits))
-	return math.Floor(number*factor) / factor
+	result := math.Floor(number*factor) / factor
+	print(factor, result)
+	return result
 }
 
 func tradeStrategy(client *binance.Client, data []*binance.Kline, symbol, asset string, quantity float64, position bool) bool {
 	slowMean := movingAverage(data, 7)
 	fastMean := movingAverage(data, 40)
 
-	fmt.Printf("Last Fast Mean: %.4f, Last Slow Mean: %.4f\n", fastMean, slowMean)
+	lastKline := data[len(data)-1]
+	closePrice := toFloat(lastKline.Close)
+	timestamp := time.UnixMilli(lastKline.CloseTime).Format("2006-01-02 15:04")
+
+	fmt.Printf("🕒 %s | Price: %.2f | Fast: %.4f | Slow: %.4f\n", timestamp, closePrice, fastMean, slowMean)
 
 	account, err := client.NewGetAccountService().Do(context.Background())
 	if err != nil {
-		log.Println("Error getting account info:", err)
+		log.Println("❌ Error getting account info:", err)
 		return position
 	}
 
@@ -101,41 +96,50 @@ func tradeStrategy(client *binance.Client, data []*binance.Kline, symbol, asset 
 	for _, bal := range account.Balances {
 		if bal.Asset == asset {
 			freeBalance = toFloat(bal.Free)
-			fmt.Printf("Free balance for %s: %.4f\n", asset, freeBalance)
+			fmt.Printf("💰 Free balance for %s: %.8f\n", asset, freeBalance)
 			break
 		}
 	}
 
-	if fastMean > slowMean && !position {
-		fmt.Println("Placing buy order...")
+	switch {
+	case fastMean > slowMean && !position:
+		qtyStr := strconv.FormatFloat(quantity, 'f', 3, 64)
+		fmt.Println("🟢 Placing buy order of quantity:", qtyStr)
 		order, err := client.NewCreateOrderService().
 			Symbol(symbol).
 			Side(binance.SideTypeBuy).
 			Type(binance.OrderTypeMarket).
-			Quantity(fmt.Sprintf("%.3f", quantity)).
+			Quantity(qtyStr).
 			Do(context.Background())
-		fmt.Println(order)
 		if err == nil {
+			fmt.Println("✅ Buy order placed:", order)
 			position = true
 		} else {
-			log.Println("Error placing buy order:", err)
+			log.Println("❌ Error placing buy order:", err)
 		}
-	} else if fastMean < slowMean && position {
-		fmt.Println("Placing sell order...")
+
+	case fastMean < slowMean && position:
+		truncatedBalance := truncate(freeBalance, 3)
+		qtyStr := strconv.FormatFloat(truncatedBalance, 'f', 3, 64)
+
+		fmt.Println("🔴 Placing sell order of quantity:", qtyStr)
+
 		order, err := client.NewCreateOrderService().
 			Symbol(symbol).
 			Side(binance.SideTypeSell).
 			Type(binance.OrderTypeMarket).
-			Quantity(fmt.Sprintf("%.3f", truncate(freeBalance, 3))).
+			Quantity(qtyStr).
 			Do(context.Background())
-		fmt.Println(order)
+
 		if err == nil {
+			fmt.Println("✅ Sell order placed:", order)
 			position = false
 		} else {
-			log.Println("Error placing sell order:", err)
+			log.Println("❌ Error placing sell order:", err)
 		}
-	} else {
-		fmt.Println("No trade action taken. Current position:", position)
+
+	default:
+		fmt.Println("⏸ No trade action taken. Holding position:", position)
 	}
 
 	return position
