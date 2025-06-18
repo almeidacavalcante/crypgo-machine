@@ -1,0 +1,146 @@
+//package mainb
+//
+//import (
+//	"context"
+//	"fmt"
+//	"log"
+//	"math"
+//	"os"
+//	"strconv"
+//	"time"
+//
+//	"github.com/adshao/go-binance/v2"
+//	"github.com/joho/godotenv"
+//)
+//
+//func main() {
+//	fmt.Println("🚀 Starting Binance Trading Bot...")
+//	loadEnv()
+//
+//	client := binance.NewClient(
+//		os.Getenv("BINANCE_API_KEY"),
+//		os.Getenv("BINANCE_SECRET_KEY"),
+//	)
+//
+//	symbol := "SOLBRL"
+//	asset := "SOL"
+//	quantity := 0.015
+//	position := false
+//
+//	for {
+//		klines, err := client.NewKlinesService().
+//			Symbol(symbol).
+//			Interval("1h").
+//			Limit(1000).
+//			Do(context.Background())
+//
+//		if err != nil {
+//			log.Println("❌ Error fetching market data:", err)
+//			time.Sleep(60 * time.Second)
+//			continue
+//		}
+//
+//		position = tradeStrategy(client, klines, symbol, asset, quantity, position)
+//		time.Sleep(60 * time.Second)
+//	}
+//}
+//
+//func loadEnv() {
+//	err := godotenv.Load()
+//	if err != nil {
+//		log.Fatalf("❌ Error loading .env file: %v", err)
+//	}
+//}
+//
+//func toFloat(val string) float64 {
+//	f, _ := strconv.ParseFloat(val, 64)
+//	return f
+//}
+//
+//func movingAverage(data []*binance.Kline, window int) float64 {
+//	if len(data) < window {
+//		return 0
+//	}
+//	sum := 0.0
+//	for i := len(data) - window; i < len(data); i++ {
+//		sum += toFloat(data[i].Close)
+//	}
+//	return sum / float64(window)
+//}
+//
+//func truncate(number float64, digits int) float64 {
+//	print(number, digits)
+//	factor := math.Pow(10, float64(digits))
+//	result := math.Floor(number*factor) / factor
+//	print(factor, result)
+//	return result
+//}
+//
+//func tradeStrategy(client *binance.Client, data []*binance.Kline, symbol, asset string, quantity float64, position bool) bool {
+//	slowMean := movingAverage(data, 7)
+//	fastMean := movingAverage(data, 40)
+//
+//	lastKline := data[len(data)-1]
+//	closePrice := toFloat(lastKline.Close)
+//	timestamp := time.UnixMilli(lastKline.CloseTime).Format("2006-01-02 15:04")
+//
+//	fmt.Printf("🕒 %s | Price: %.2f | Fast: %.4f | Slow: %.4f\n", timestamp, closePrice, fastMean, slowMean)
+//
+//	account, err := client.NewGetAccountService().Do(context.Background())
+//	if err != nil {
+//		log.Println("❌ Error getting account info:", err)
+//		return position
+//	}
+//
+//	var freeBalance float64
+//	for _, bal := range account.Balances {
+//		if bal.Asset == asset {
+//			freeBalance = toFloat(bal.Free)
+//			fmt.Printf("💰 Free balance for %s: %.8f\n", asset, freeBalance)
+//			break
+//		}
+//	}
+//
+//	switch {
+//	case fastMean > slowMean && !position:
+//		qtyStr := strconv.FormatFloat(quantity, 'f', 3, 64)
+//		fmt.Println("🟢 Placing buy order of quantity:", qtyStr)
+//		order, err := client.NewCreateOrderService().
+//			Symbol(symbol).
+//			Side(binance.SideTypeBuy).
+//			Type(binance.OrderTypeMarket).
+//			Quantity(qtyStr).
+//			Do(context.Background())
+//		if err == nil {
+//			fmt.Println("✅ Buy order placed:", order)
+//			position = true
+//		} else {
+//			log.Println("❌ Error placing buy order:", err)
+//		}
+//
+//	case fastMean < slowMean && position:
+//		truncatedBalance := truncate(freeBalance, 3)
+//		qtyStr := strconv.FormatFloat(truncatedBalance, 'f', 3, 64)
+//
+//		fmt.Println("🔴 Placing sell order of quantity:", qtyStr)
+//
+//		order, err := client.NewCreateOrderService().
+//			Symbol(symbol).
+//			Side(binance.SideTypeSell).
+//			Type(binance.OrderTypeMarket).
+//			Quantity(qtyStr).
+//			Do(context.Background())
+//
+//		if err == nil {
+//			fmt.Println("✅ Sell order placed:", order)
+//			position = false
+//		} else {
+//			log.Println("❌ Error placing sell order:", err)
+//		}
+//
+//	default:
+//		fmt.Println("⏸ No trade action taken. Holding position:", position)
+//	}
+//
+//	return position
+//}

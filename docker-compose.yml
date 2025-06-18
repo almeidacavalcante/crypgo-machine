@@ -1,0 +1,27 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: crypgo
+      POSTGRES_PASSWORD: crypgo
+      POSTGRES_DB: crypgo_machine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: crypgo
+      RABBITMQ_DEFAULT_PASS: crypgo
+
+volumes:
+  postgres_data:
