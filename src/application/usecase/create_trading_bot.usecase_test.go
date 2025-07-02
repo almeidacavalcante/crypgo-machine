@@ -1,6 +1,8 @@
 package usecase
 
 import (
+	"crypgo-machine/src/domain/service"
+	"crypgo-machine/src/infra/queue"
 	"errors"
 	"github.com/adshao/go-binance/v2"
 	"testing"
@@ -9,17 +11,25 @@ import (
 )
 
 type MockTradeBotRepository struct {
-	SaveFunc func(*entity.TradeBot) error
+	SaveFunc   func(bot *entity.TradingBot) error
+	UpdateFunc func(bot *entity.TradingBot) error
 }
 
-func (m *MockTradeBotRepository) Save(bot *entity.TradeBot) error {
+func (m *MockTradeBotRepository) Update(bot *entity.TradingBot) error {
+	if m.UpdateFunc != nil {
+		return m.UpdateFunc(bot)
+	}
+	return nil
+}
+
+func (m *MockTradeBotRepository) Save(bot *entity.TradingBot) error {
 	if m.SaveFunc != nil {
 		return m.SaveFunc(bot)
 	}
 	return nil
 }
 
-func (m *MockTradeBotRepository) GetTradeByID(id string) (*entity.TradeBot, error) {
+func (m *MockTradeBotRepository) GetTradeByID(id string) (*entity.TradingBot, error) {
 	return nil, nil
 }
 
@@ -27,32 +37,52 @@ func (m *MockTradeBotRepository) Exists(id string) (bool, error) {
 	return false, nil
 }
 
+func (m *MockTradeBotRepository) GetAllTradingBots() ([]*entity.TradingBot, error) {
+	return nil, nil
+}
+
+// MockMessageBroker implements queue.MessageBroker for testing
+type MockMessageBroker struct{}
+
+func (m *MockMessageBroker) Publish(exchangeName string, message queue.Message) error {
+	return nil
+}
+
+func (m *MockMessageBroker) Subscribe(exchangeName string, queueName string, routingKeys []string, handler func(msg queue.Message) error) error {
+	return nil
+}
+
+func (m *MockMessageBroker) Close() error {
+	return nil
+}
+
 func TestCreateTradingBotUseCase_Success(t *testing.T) {
 	mockRepo := &MockTradeBotRepository{
-		SaveFunc: func(bot *entity.TradeBot) error {
+		SaveFunc: func(bot *entity.TradingBot) error {
 			if bot == nil {
 				t.Error("bot cannot be nil")
 			}
-			if bot.Quantity() != 1.5 {
-				t.Errorf("expected quantity 1.5, got %v", bot.Quantity())
+			if bot.GetQuantity() != 1.5 {
+				t.Errorf("expected quantity 1.5, got %v", bot.GetQuantity())
 			}
-			if bot.Symbol() != "SOLBRL" {
-				t.Errorf("expected symbol SOLBRL, got %s", bot.Symbol())
+			if bot.GetSymbol().GetValue() != "SOLBRL" {
+				t.Errorf("expected symbol SOLBRL, got %s", bot.GetSymbol())
 			}
-			if bot.Strategy().Name() != "MovingAverage" {
-				t.Errorf("expected strategy MovingAverage, got %s", bot.Strategy().Name())
+			if bot.GetStrategy().GetName() != "MovingAverage" {
+				t.Errorf("expected strategy MovingAverage, got %s", bot.GetStrategy().GetName())
 			}
 			return nil
 		},
 	}
 
-	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{})
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
-	input := Input{
+	input := InputCreateTradingBot{
 		Symbol:   "SOLBRL",
 		Quantity: 1.5,
 		Strategy: "MovingAverage",
-		Params:   MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
 	}
 
 	err := uc.Execute(input)
@@ -63,13 +93,14 @@ func TestCreateTradingBotUseCase_Success(t *testing.T) {
 
 func TestCreateTradingBotUseCase_InvalidSymbol(t *testing.T) {
 	mockRepo := &MockTradeBotRepository{}
-	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{})
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
-	input := Input{
+	input := InputCreateTradingBot{
 		Symbol:   "INVALID",
 		Quantity: 1,
 		Strategy: "MovingAverage",
-		Params:   MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
 	}
 
 	err := uc.Execute(input)
@@ -80,17 +111,18 @@ func TestCreateTradingBotUseCase_InvalidSymbol(t *testing.T) {
 
 func TestCreateTradingBotUseCase_RepoError(t *testing.T) {
 	mockRepo := &MockTradeBotRepository{
-		SaveFunc: func(bot *entity.TradeBot) error {
+		SaveFunc: func(bot *entity.TradingBot) error {
 			return errors.New("db error")
 		},
 	}
-	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{})
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
-	input := Input{
+	input := InputCreateTradingBot{
 		Symbol:   "SOLBRL",
 		Quantity: 2.0,
 		Strategy: "MovingAverage",
-		Params:   MovingAverageParams{FastWindow: 10, SlowWindow: 20},
+		Params:   service.MovingAverageParams{FastWindow: 10, SlowWindow: 20},
 	}
 
 	err := uc.Execute(input)
@@ -101,13 +133,14 @@ func TestCreateTradingBotUseCase_RepoError(t *testing.T) {
 
 func TestCreateTradingBotUseCase_InvalidQuantity(t *testing.T) {
 	mockRepo := &MockTradeBotRepository{}
-	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{})
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
-	input := Input{
+	input := InputCreateTradingBot{
 		Symbol:   "SOLBRL",
 		Quantity: 0, // Inválido
 		Strategy: "MovingAverage",
-		Params:   MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
 	}
 
 	err := uc.Execute(input)
@@ -118,13 +151,14 @@ func TestCreateTradingBotUseCase_InvalidQuantity(t *testing.T) {
 
 func TestCreateTradingBotUseCase_UnknownStrategy(t *testing.T) {
 	mockRepo := &MockTradeBotRepository{}
-	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{})
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
-	input := Input{
+	input := InputCreateTradingBot{
 		Symbol:   "SOLBRL",
 		Quantity: 1.0,
 		Strategy: "NotARealStrategy", // Não existe
-		Params:   MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
 	}
 
 	err := uc.Execute(input)
@@ -135,17 +169,18 @@ func TestCreateTradingBotUseCase_UnknownStrategy(t *testing.T) {
 
 func TestCreateTradingBotUseCase_DuplicateBot(t *testing.T) {
 	mockRepo := &MockTradeBotRepository{
-		SaveFunc: func(bot *entity.TradeBot) error {
+		SaveFunc: func(bot *entity.TradingBot) error {
 			return errors.New("bot already exists")
 		},
 	}
-	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{})
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
-	input := Input{
+	input := InputCreateTradingBot{
 		Symbol:   "SOLBRL",
 		Quantity: 1.0,
 		Strategy: "MovingAverage",
-		Params:   MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
 	}
 
 	err := uc.Execute(input)
@@ -157,24 +192,25 @@ func TestCreateTradingBotUseCase_DuplicateBot(t *testing.T) {
 func TestCreateTradingBotUseCase_MultipleBotsDifferentParams(t *testing.T) {
 	callCount := 0
 	mockRepo := &MockTradeBotRepository{
-		SaveFunc: func(bot *entity.TradeBot) error {
+		SaveFunc: func(bot *entity.TradingBot) error {
 			callCount++
 			return nil
 		},
 	}
-	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{})
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
-	input1 := Input{
+	input1 := InputCreateTradingBot{
 		Symbol:   "SOLBRL",
 		Quantity: 1.0,
 		Strategy: "MovingAverage",
-		Params:   MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
 	}
-	input2 := Input{
+	input2 := InputCreateTradingBot{
 		Symbol:   "SOLBRL",
 		Quantity: 2.0,
 		Strategy: "MovingAverage",
-		Params:   MovingAverageParams{FastWindow: 9, SlowWindow: 30},
+		Params:   service.MovingAverageParams{FastWindow: 9, SlowWindow: 30},
 	}
 
 	err1 := uc.Execute(input1)

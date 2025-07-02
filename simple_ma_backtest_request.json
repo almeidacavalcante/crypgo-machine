@@ -1,0 +1,8 @@
+{
+  "strategy_name": "MovingAverage",
+  "symbol": "SOLBRL",
+  "initial_capital": 10000.0,
+  "currency": "BRL",
+  "trading_fees": 0.015,
+  "use_last_week": true
+}

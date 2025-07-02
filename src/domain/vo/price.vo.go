@@ -3,36 +3,42 @@ package vo
 import "errors"
 
 var (
-	ErrInvalidPrice = errors.New("price cannot be negative")
+	ErrInvalidPrice    = errors.New("price cannot be zero or negative")
+	ErrInvalidCurrency = errors.New("currency should have length of 3")
 )
 
 type Price struct {
 	amount   float64
-	currency Currency
+	currency string
 }
 
-func NewPrice(amount float64, currency Currency) (*Price, error) {
-	err := validatePrice(amount)
+func NewPrice(amount float64, currency string) (Price, error) {
+	err := validatePrice(amount, currency)
 	if err != nil {
-		return nil, err
+		return Price{}, err
 	}
-	return &Price{
+	return Price{
 		amount:   amount,
 		currency: currency,
 	}, nil
 }
 
-func validatePrice(amount float64) error {
-	if amount < 0 {
+func validatePrice(amount float64, currency string) error {
+	if amount <= 0 {
 		return ErrInvalidPrice
 	}
+
+	if len(currency) != 3 {
+		return ErrInvalidCurrency
+	}
+
 	return nil
 }
 
-func (p *Price) Amount() float64 {
+func (p *Price) GetAmount() float64 {
 	return p.amount
 }
 
-func (p *Price) Currency() string {
-	return p.currency.Code()
+func (p *Price) GetCurrency() string {
+	return p.currency
 }

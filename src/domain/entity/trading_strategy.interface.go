@@ -13,6 +13,7 @@ const (
 )
 
 type TradingStrategy interface {
-	Name() string
-	Decide(klines []vo.Kline) TradingDecision
+	GetName() string
+	GetParams() map[string]interface{}
+	Decide(klines []vo.Kline, tradingBot *TradingBot) *StrategyAnalysisResult
 }

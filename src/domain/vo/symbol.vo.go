@@ -2,23 +2,36 @@ package vo
 
 import "fmt"
 
-type Symbol string
+type Symbol struct {
+	value string
+}
 
 func NewSymbol(val string) (Symbol, error) {
+	// exemplos possível:
+	// BTCBRL
+	// SOLBRL
+
+	err := validate(val)
+	if err != nil {
+		return Symbol{}, err
+	}
+
+	return Symbol{value: val}, nil
+}
+
+func (s Symbol) GetValue() string {
+	return s.value
+}
+
+func validate(val string) error {
+	allowedSymbols := map[string]struct{}{
+		"BTCBRL": {},
+		"SOLBRL": {},
+	}
+
 	if _, ok := allowedSymbols[val]; !ok {
-		return "", fmt.Errorf("invalid symbol: %s, allowed symbols: %s", val, getAllowedSymbols())
+		return fmt.Errorf("invalid symbol: %s", val)
 	}
-	return Symbol(val), nil
-}
 
-var allowedSymbols = map[string]struct{}{
-	"SOLBRL": {},
-}
-
-func getAllowedSymbols() []string {
-	symbols := make([]string, 0, len(allowedSymbols))
-	for symbol := range allowedSymbols {
-		symbols = append(symbols, symbol)
-	}
-	return symbols
+	return nil
 }

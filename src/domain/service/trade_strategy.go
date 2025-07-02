@@ -5,19 +5,28 @@ import (
 	"fmt"
 )
 
-func NewTradeStrategyFactory(strategyType string, params []int) (entity.TradingStrategy, error) {
+type MovingAverageParams struct {
+	FastWindow int
+	SlowWindow int
+}
+
+func NewTradeStrategyFactory(strategyType string, Params interface{}) (entity.TradingStrategy, error) {
+	var strategy entity.TradingStrategy
+
 	switch strategyType {
 	case "MovingAverage":
-		if len(params) != 2 {
-			return nil, fmt.Errorf("MovingAverage expects 2 params")
+		params, ok := Params.(MovingAverageParams)
+		if !ok {
+			return nil, fmt.Errorf("params must be MovingAverageParams for MovingAverage strategy")
 		}
-		return NewMovingAverageStrategy(params[0], params[1]), nil
-	case "Breakout":
-		if len(params) != 1 {
-			return nil, fmt.Errorf("breakout expects 1 param")
+		if params.FastWindow <= 0 || params.SlowWindow <= 0 {
+			return nil, fmt.Errorf("missing or invalid fields for MovingAverage: FastWindow and SlowWindow must be > 0")
 		}
-		return NewBreakoutStrategy(params[0]), nil
+		strategy = entity.NewMovingAverageStrategy(params.FastWindow, params.SlowWindow)
+
 	default:
-		return nil, fmt.Errorf("unknown strategy: %s", strategyType)
+		return nil, fmt.Errorf("unknown or invalid strategy: %s", strategyType)
 	}
+
+	return strategy, nil
 }

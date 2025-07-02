@@ -5,39 +5,42 @@ import (
 	"crypgo-machine/src/domain/entity"
 	"crypgo-machine/src/domain/service"
 	"crypgo-machine/src/domain/vo"
+	"crypgo-machine/src/infra/queue"
+	"encoding/json"
 	"fmt"
 	"github.com/adshao/go-binance/v2"
 )
 
-type MovingAverageParams struct {
-	FastWindow int
-	SlowWindow int
-}
-
-type BreakoutParams struct {
-	Lookback int
-}
-
 type CreateTradingBotUseCase struct {
-	tradeBotRepository repository.TradeBotRepository
-	client             binance.Client
+	tradingBotRepository repository.TradingBotRepository
+	client               binance.Client
+	messageBroker        queue.MessageBroker
+	exchangeName         string
 }
 
-func NewCreateTradingBotUseCase(tradeBotRepository repository.TradeBotRepository, client binance.Client) *CreateTradingBotUseCase {
+func NewCreateTradingBotUseCase(
+	tradingBotRepository repository.TradingBotRepository,
+	client binance.Client,
+	messageBroker queue.MessageBroker,
+	exchangeName string,
+) *CreateTradingBotUseCase {
 	return &CreateTradingBotUseCase{
-		tradeBotRepository: tradeBotRepository,
-		client:             client,
+		tradingBotRepository: tradingBotRepository,
+		client:               client,
+		messageBroker:        messageBroker,
+		exchangeName:         exchangeName,
 	}
 }
 
-type Input struct {
-	Symbol   string
-	Quantity float64
-	Strategy string
-	Params   interface{} // Ou json.RawMessage, ou map[string]interface{}, etc.
+type InputCreateTradingBot struct {
+	Symbol          string
+	Quantity        float64
+	Strategy        string
+	Params          interface{}
+	IntervalSeconds int
 }
 
-func (uc *CreateTradingBotUseCase) Execute(input Input) error {
+func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
 	symbol, err := vo.NewSymbol(input.Symbol)
 	if err != nil {
 		return fmt.Errorf("invalid symbol: %s", err)
@@ -46,40 +49,51 @@ func (uc *CreateTradingBotUseCase) Execute(input Input) error {
 		return fmt.Errorf("invalid quantity: must be greater than zero")
 	}
 
-	var strategy entity.TradingStrategy
-
-	switch input.Strategy {
-	case "MovingAverage":
-		params, ok := input.Params.(MovingAverageParams)
-		if !ok {
-			return fmt.Errorf("params must be MovingAverageParams for MovingAverage strategy")
-		}
-		// >>> Validação dos campos obrigatórios
-		if params.FastWindow <= 0 || params.SlowWindow <= 0 {
-			return fmt.Errorf("missing or invalid fields for MovingAverage: FastWindow and SlowWindow must be > 0")
-		}
-		strategy = service.NewMovingAverageStrategy(params.FastWindow, params.SlowWindow)
-
-	case "Breakout":
-		params, ok := input.Params.(BreakoutParams)
-		if !ok {
-			return fmt.Errorf("params must be BreakoutParams for Breakout strategy")
-		}
-		if params.Lookback <= 0 {
-			return fmt.Errorf("missing or invalid fields for Breakout: Lookback must be > 0")
-		}
-		strategy = service.NewBreakoutStrategy(params.Lookback)
-
-	default:
-		return fmt.Errorf("unknown or invalid strategy: %s", input.Strategy)
+	strategy, errStrategy := service.NewTradeStrategyFactory(input.Strategy, input.Params)
+	if errStrategy != nil {
+		return fmt.Errorf("invalid strategy: %s", err)
 	}
 
-	bot := entity.NewTradeBot(
-		vo.NewUUID(),
+	bot := entity.NewTradingBot(
 		symbol,
 		input.Quantity,
 		strategy,
+		input.IntervalSeconds,
 	)
 
-	return uc.tradeBotRepository.Save(bot)
+	errSave := uc.tradingBotRepository.Save(bot)
+	if errSave != nil {
+		return errSave
+	}
+
+	payload, errMarshal := json.Marshal(map[string]interface{}{
+		"id":       bot.Id,
+		"symbol":   bot.GetSymbol(),
+		"quantity": bot.GetQuantity(),
+		"strategy": bot.GetStrategy().GetName(),
+	})
+	if errMarshal != nil {
+		return errMarshal
+	}
+
+	if err := uc.emitEvent("trading_bot.created", payload); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (uc *CreateTradingBotUseCase) emitEvent(topic string, payload []byte) error {
+	fmt.Println("emitEvent ---- topic:", topic, "payload:", string(payload))
+	event := queue.Message{
+		RoutingKey: topic,
+		Payload:    payload,
+		Headers: map[string]string{
+			"event_type": topic,
+		},
+	}
+	if err := uc.messageBroker.Publish(uc.exchangeName, event); err != nil {
+		return fmt.Errorf("failed to publish event: %w", err)
+	}
+	return nil
 }

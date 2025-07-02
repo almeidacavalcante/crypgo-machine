@@ -4,6 +4,9 @@ import (
 	"crypgo-machine/src/application/usecase"
 	"crypgo-machine/src/infra/api"
 	"crypgo-machine/src/infra/database"
+	"crypgo-machine/src/infra/external"
+	"crypgo-machine/src/infra/notification"
+	"crypgo-machine/src/infra/queue"
 	"crypgo-machine/src/infra/repository"
 	"fmt"
 	"github.com/adshao/go-binance/v2"
@@ -34,11 +37,40 @@ func main() {
 	}
 	fmt.Println("✅ Database connection established.")
 
-	tradeBotRepository := repository.NewTradeBotRepositoryDatabase(dbConnection.DB)
-	createTradingBotUseCase := usecase.NewCreateTradingBotUseCase(tradeBotRepository, *client)
+	tradingBotRepository := repository.NewTradingBotRepositoryDatabase(dbConnection.DB)
+	rabbit, err := queue.NewRabbitQMAdapter(os.Getenv("RABBIT_MQ_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	decisionLogRepository := repository.NewTradingDecisionLogRepositoryDatabase(dbConnection.DB)
 
+	notificationConsumer := notification.NewEmailNotificationConsumer(rabbit, "trading_bot", "email.notification.queue")
+	go func() {
+		err := notificationConsumer.Start()
+		if err != nil {
+			log.Fatalf("❌ Error starting email notification consumer: %v", err)
+		} else {
+			fmt.Println("✅ Email notification consumer started successfully.")
+		}
+	}()
+
+	createTradingBotUseCase := usecase.NewCreateTradingBotUseCase(tradingBotRepository, *client, rabbit, "trading_bot")
 	createTradingBotController := api.NewCreateTradingBotController(createTradingBotUseCase)
-	http.HandleFunc("/api/v1/trading/create_trading_bot", createTradingBotController.CreateBot)
+	http.HandleFunc("/api/v1/trading/create_trading_bot", createTradingBotController.Handle)
+
+	listAllTradingBotsUseCase := usecase.NewListAllTradingBotsUseCase(tradingBotRepository)
+	listAllTradingBotsController := api.NewListAllTradingBotsController(listAllTradingBotsUseCase)
+	http.HandleFunc("/api/v1/trading/list", listAllTradingBotsController.Handle)
+
+	binanceWrapper := external.NewBinanceClientWrapper(client)
+	startTradingBotUseCase := usecase.NewStartTradingBotUseCase(tradingBotRepository, decisionLogRepository, binanceWrapper)
+	startTradingBotController := api.NewStartTradingBotController(startTradingBotUseCase)
+	http.HandleFunc("/api/v1/trading/start", startTradingBotController.Handle)
+
+	backtestStrategyUseCase := usecase.NewBacktestStrategyUseCase()
+	historicalDataService := external.NewBinanceHistoricalDataService(binanceWrapper)
+	backtestStrategyController := api.NewBacktestStrategyController(backtestStrategyUseCase, historicalDataService)
+	http.HandleFunc("/api/v1/trading/backtest", backtestStrategyController.Handle)
 
 	fmt.Println("🚀 Listening on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {

@@ -1,6 +1,7 @@
 package vo
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -64,5 +65,48 @@ func (k Kline) validate() error {
 	if k.high < k.low {
 		return fmt.Errorf("high must be ≥ low")
 	}
+	return nil
+}
+
+// MarshalJSON implements custom JSON marshaling for Kline
+func (k Kline) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Open      float64 `json:"open"`
+		Close     float64 `json:"close"`
+		High      float64 `json:"high"`
+		Low       float64 `json:"low"`
+		Volume    float64 `json:"volume"`
+		CloseTime int64   `json:"closeTime"`
+	}{
+		Open:      k.open,
+		Close:     k.close,
+		High:      k.high,
+		Low:       k.low,
+		Volume:    k.volume,
+		CloseTime: k.closeTime,
+	})
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for Kline
+func (k *Kline) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Open      float64 `json:"open"`
+		Close     float64 `json:"close"`
+		High      float64 `json:"high"`
+		Low       float64 `json:"low"`
+		Volume    float64 `json:"volume"`
+		CloseTime int64   `json:"closeTime"`
+	}
+	
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	
+	kline, err := NewKline(aux.Open, aux.Close, aux.High, aux.Low, aux.Volume, aux.CloseTime)
+	if err != nil {
+		return err
+	}
+	
+	*k = kline
 	return nil
 }

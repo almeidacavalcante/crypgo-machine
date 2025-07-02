@@ -5,19 +5,16 @@ import (
 	"testing"
 )
 
-var curr = Currency{code: "USD"}
-
 func TestNewPrice(t *testing.T) {
-	p, err := NewPrice(100.50, curr)
+	p, err := NewPrice(1.50, "USD")
 	require.NoError(t, err)
-	require.Equal(t, 100.50, p.Amount())
-	require.Equal(t, "USD", p.Currency())
+	require.Equal(t, 1.50, p.GetAmount())
+	require.Equal(t, "USD", p.GetCurrency())
 }
 
-func TestNewPrice_Invalid(t *testing.T) {
-	_, err := NewPrice(-10.00, curr)
+func TestPrice_InvalidValues(t *testing.T) {
+	_, err := NewPrice(0, "USD")
 	require.Error(t, err)
-
-	_, err = NewPrice(0.00, curr)
-	require.NoError(t, err) // Zero price is valid for now
+	_, err = NewPrice(10, "USDT")
+	require.Error(t, err)
 }

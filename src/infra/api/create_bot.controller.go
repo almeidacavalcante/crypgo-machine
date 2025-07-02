@@ -2,22 +2,23 @@ package api
 
 import (
 	"crypgo-machine/src/application/usecase"
+	"crypgo-machine/src/domain/service"
 	"encoding/json"
 	"net/http"
 )
 
 type CreateTradingBotController struct {
-	CreateTradingBotUseCase *usecase.CreateTradingBotUseCase
+	CreateTradingBot *usecase.CreateTradingBotUseCase
 }
 
-func NewCreateTradingBotController(createTradingBotUseCase *usecase.CreateTradingBotUseCase) *CreateTradingBotController {
+func NewCreateTradingBotController(createTradingBot *usecase.CreateTradingBotUseCase) *CreateTradingBotController {
 	return &CreateTradingBotController{
-		CreateTradingBotUseCase: createTradingBotUseCase,
+		CreateTradingBot: createTradingBot,
 	}
 }
 
-func (c *CreateTradingBotController) CreateBot(w http.ResponseWriter, r *http.Request) {
-	var rawInput usecase.Input
+func (c *CreateTradingBotController) Handle(w http.ResponseWriter, r *http.Request) {
+	var rawInput usecase.InputCreateTradingBot
 	if err := json.NewDecoder(r.Body).Decode(&rawInput); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -26,7 +27,7 @@ func (c *CreateTradingBotController) CreateBot(w http.ResponseWriter, r *http.Re
 	var params interface{}
 	switch rawInput.Strategy {
 	case "MovingAverage":
-		var m usecase.MovingAverageParams
+		var m service.MovingAverageParams
 		// Marshal/Unmarshal: transforma map em struct
 		b, _ := json.Marshal(rawInput.Params)
 		if err := json.Unmarshal(b, &m); err != nil {
@@ -34,27 +35,20 @@ func (c *CreateTradingBotController) CreateBot(w http.ResponseWriter, r *http.Re
 			return
 		}
 		params = m
-	case "Breakout":
-		var b usecase.BreakoutParams
-		bs, _ := json.Marshal(rawInput.Params)
-		if err := json.Unmarshal(bs, &b); err != nil {
-			http.Error(w, "invalid params for Breakout", http.StatusBadRequest)
-			return
-		}
-		params = b
 	default:
 		http.Error(w, "unknown strategy", http.StatusBadRequest)
 		return
 	}
 
-	input := usecase.Input{
-		Symbol:   rawInput.Symbol,
-		Quantity: rawInput.Quantity,
-		Strategy: rawInput.Strategy,
-		Params:   params,
+	input := usecase.InputCreateTradingBot{
+		Symbol:          rawInput.Symbol,
+		Quantity:        rawInput.Quantity,
+		Strategy:        rawInput.Strategy,
+		Params:          params,
+		IntervalSeconds: rawInput.IntervalSeconds,
 	}
 
-	if err := c.CreateTradingBotUseCase.Execute(input); err != nil {
+	if err := c.CreateTradingBot.Execute(input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

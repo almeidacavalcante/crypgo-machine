@@ -77,8 +77,8 @@
 //}
 //
 //func tradeStrategy(client *binance.Client, data []*binance.Kline, symbol, asset string, quantity float64, position bool) bool {
-//	slowMean := movingAverage(data, 7)
-//	fastMean := movingAverage(data, 40)
+//	slowMean := movingAverage(data, 40)
+//	fastMean := movingAverage(data, 7)
 //
 //	lastKline := data[len(data)-1]
 //	closePrice := toFloat(lastKline.Close)

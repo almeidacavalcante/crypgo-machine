@@ -3,7 +3,7 @@ package vo
 import "errors"
 
 var (
-	ErrInvalidCurrency = errors.New("currency code must be a 3-letter string")
+	ErrInvalidCurrency2 = errors.New("currency code must be a 3-letter string")
 )
 
 type Currency struct {
