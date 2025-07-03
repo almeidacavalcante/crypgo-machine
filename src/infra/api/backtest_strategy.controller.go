@@ -24,16 +24,18 @@ func NewBacktestStrategyController(backtestUseCase *usecase.BacktestStrategyUseC
 }
 
 type BacktestRequest struct {
-	StrategyName   string            `json:"strategy_name"`
-	Symbol         string            `json:"symbol"`
-	HistoricalData []HistoricalKline `json:"historical_data,omitempty"` // Optional for manual data
-	InitialCapital float64           `json:"initial_capital"`
-	Currency       string            `json:"currency"`
-	StartDate      string            `json:"start_date,omitempty"`    // Optional - will use yesterday if not provided
-	EndDate        string            `json:"end_date,omitempty"`      // Optional - will use yesterday if not provided
-	TradingFees    float64           `json:"trading_fees"`            // Percentage (e.g., 0.1 for 0.1%)
-	UseYesterday   bool              `json:"use_yesterday,omitempty"` // If true, fetch yesterday's data from Binance
-	UseLastWeek    bool              `json:"use_last_week,omitempty"` // If true, fetch last week's data from Binance
+	StrategyName    string            `json:"strategy_name"`
+	Symbol          string            `json:"symbol"`
+	HistoricalData  []HistoricalKline `json:"historical_data,omitempty"`  // Optional for manual data
+	InitialCapital  float64           `json:"initial_capital"`
+	Currency        string            `json:"currency"`
+	StartDate       string            `json:"start_date,omitempty"`       // Optional - will use yesterday if not provided
+	EndDate         string            `json:"end_date,omitempty"`         // Optional - will use yesterday if not provided
+	TradingFees     float64           `json:"trading_fees"`               // Percentage (e.g., 0.1 for 0.1%)
+	UseYesterday    bool              `json:"use_yesterday,omitempty"`    // If true, fetch yesterday's data from Binance
+	UseLastWeek     bool              `json:"use_last_week,omitempty"`    // If true, fetch last week's data from Binance
+	UseBinanceData  bool              `json:"use_binance_data,omitempty"` // If true, fetch data from start_date to today
+	Interval        string            `json:"interval,omitempty"`         // Interval for Binance data (1m, 30m, 1h, 4h, 1d)
 }
 
 // YesterdayBacktestRequest is a simplified request for yesterday's data
@@ -116,7 +118,37 @@ func (c *BacktestStrategyController) Handle(w http.ResponseWriter, r *http.Reque
 	var err error
 
 	// Check if we should use historical data from Binance
-	if req.UseLastWeek {
+	if req.UseBinanceData && req.StartDate != "" {
+		// Fetch data from specific date to today
+		fmt.Printf("🔍 Fetching data from %s to today for symbol: %s (interval: %s)\n", req.StartDate, req.Symbol, req.Interval)
+		
+		// Parse start date
+		startDate, err = time.Parse(time.RFC3339, req.StartDate)
+		if err != nil {
+			c.sendErrorResponse(w, fmt.Sprintf("Invalid start date format: %v", err), http.StatusBadRequest)
+			return
+		}
+		
+		// Default interval to 30m if not provided
+		interval := req.Interval
+		if interval == "" {
+			interval = "30m"
+		}
+		
+		klines, err = c.historicalDataService.GetKlinesFromDateToToday(req.Symbol, startDate, interval)
+		if err != nil {
+			fmt.Printf("❌ Error fetching data from %s: %v\n", req.StartDate, err)
+			c.sendErrorResponse(w, fmt.Sprintf("Failed to fetch data from %s: %v", req.StartDate, err), http.StatusInternalServerError)
+			return
+		}
+		fmt.Printf("✅ Fetched %d klines from %s to today\n", len(klines), req.StartDate)
+
+		// Set end date to yesterday
+		now := time.Now()
+		yesterday := now.AddDate(0, 0, -1)
+		endDate = time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 23, 59, 59, 999999999, yesterday.Location())
+		fmt.Printf("📅 Using date range: %s to %s\n", startDate.Format("2006-01-02 15:04:05"), endDate.Format("2006-01-02 15:04:05"))
+	} else if req.UseLastWeek {
 		// Fetch last week's data from Binance
 		fmt.Printf("🔍 Fetching last week's data for symbol: %s\n", req.Symbol)
 		klines, err = c.historicalDataService.GetLastWeekKlines(req.Symbol)
@@ -134,7 +166,7 @@ func (c *BacktestStrategyController) Handle(w http.ResponseWriter, r *http.Reque
 		startDate = time.Date(weekAgo.Year(), weekAgo.Month(), weekAgo.Day(), 0, 0, 0, 0, weekAgo.Location())
 		endDate = time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 23, 59, 59, 999999999, yesterday.Location())
 		fmt.Printf("📅 Using date range: %s to %s\n", startDate.Format("2006-01-02 15:04:05"), endDate.Format("2006-01-02 15:04:05"))
-	} else if req.UseYesterday || (len(req.HistoricalData) == 0 && req.StartDate == "" && req.EndDate == "") {
+	} else if req.UseYesterday || (len(req.HistoricalData) == 0 && req.StartDate == "" && req.EndDate == "" && !req.UseBinanceData) {
 		// Fetch yesterday's data from Binance
 		fmt.Printf("🔍 Fetching yesterday's data for symbol: %s\n", req.Symbol)
 		klines, err = c.historicalDataService.GetYesterdayKlines(req.Symbol)
@@ -226,13 +258,34 @@ func (c *BacktestStrategyController) validateRequest(req BacktestRequest) error 
 		return fmt.Errorf("trading_fees cannot be negative")
 	}
 
+	// If using custom binance data, validate start_date is provided
+	if req.UseBinanceData {
+		if req.StartDate == "" {
+			return fmt.Errorf("start_date is required when use_binance_data=true")
+		}
+		// Validate interval if provided
+		if req.Interval != "" {
+			validIntervals := []string{"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"}
+			isValid := false
+			for _, valid := range validIntervals {
+				if req.Interval == valid {
+					isValid = true
+					break
+				}
+			}
+			if !isValid {
+				return fmt.Errorf("invalid interval: %s. Valid intervals: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M", req.Interval)
+			}
+		}
+	}
+
 	// If not using automatic data fetching, validate that historical data and dates are provided
-	if !req.UseYesterday && !req.UseLastWeek && len(req.HistoricalData) == 0 && req.StartDate == "" && req.EndDate == "" {
-		return fmt.Errorf("either set use_yesterday=true, use_last_week=true, or provide historical_data with start_date and end_date")
+	if !req.UseYesterday && !req.UseLastWeek && !req.UseBinanceData && len(req.HistoricalData) == 0 && req.StartDate == "" && req.EndDate == "" {
+		return fmt.Errorf("either set use_yesterday=true, use_last_week=true, use_binance_data=true with start_date, or provide historical_data with start_date and end_date")
 	}
 
 	// If providing manual data, ensure all required fields are present
-	if !req.UseYesterday && !req.UseLastWeek && len(req.HistoricalData) > 0 {
+	if !req.UseYesterday && !req.UseLastWeek && !req.UseBinanceData && len(req.HistoricalData) > 0 {
 		if req.StartDate == "" {
 			return fmt.Errorf("start_date is required when providing historical_data")
 		}

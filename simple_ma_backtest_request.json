@@ -4,5 +4,7 @@
   "initial_capital": 10000.0,
   "currency": "BRL",
   "trading_fees": 0.015,
-  "use_last_week": true
+  "start_date": "2025-02-15T00:00:00Z",
+  "interval": "1m",
+  "use_binance_data": true
 }

@@ -13,7 +13,7 @@ type MovingAverageStrategy struct {
 func NewMovingAverageStrategy(fast, slow int) *MovingAverageStrategy {
 	// Default minimum spread of 0.5% to avoid whipsaw signals
 	minimumSpread, _ := vo.NewMinimumSpread(0.5)
-	
+
 	return &MovingAverageStrategy{
 		FastWindow:    fast,
 		SlowWindow:    slow,
@@ -56,25 +56,23 @@ func (s *MovingAverageStrategy) Decide(klines []vo.Kline, tradingBot *TradingBot
 
 	// Check if spread is sufficient to avoid whipsaw signals
 	hasSufficientSpread := s.MinimumSpread.HasSufficientSpread(fast, slow)
-	
+
 	analysisData := map[string]interface{}{
-		"fast":               fast,
-		"slow":               slow,
-		"currentPrice":       currentPrice,
-		"isPositioned":       tradingBot.GetIsPositioned(),
+		"fast":                fast,
+		"slow":                slow,
+		"currentPrice":        currentPrice,
+		"isPositioned":        tradingBot.GetIsPositioned(),
 		"hasSufficientSpread": hasSufficientSpread,
-		"minimumSpread":      s.MinimumSpread.GetValue(),
-		"actualSpread":       s.calculateSpreadPercentage(fast, slow),
+		"minimumSpread":       s.MinimumSpread.GetValue(),
+		"actualSpread":        s.calculateSpreadPercentage(fast, slow),
 	}
 
 	var decision TradingDecision
-	
-	// INVERTED LOGIC: Buy low, sell high
-	if fast < slow && !tradingBot.GetIsPositioned() && hasSufficientSpread {
+
+	if fast > slow && !tradingBot.GetIsPositioned() && hasSufficientSpread {
 		decision = Buy
 		analysisData["reason"] = "fast_below_slow_buy_low"
-	} else if fast > slow && tradingBot.GetIsPositioned() {
-		// Sell when price is high
+	} else if fast < slow && tradingBot.GetIsPositioned() {
 		decision = Sell
 		if hasSufficientSpread {
 			analysisData["reason"] = "fast_above_slow_sell_high"
@@ -109,12 +107,12 @@ func (s *MovingAverageStrategy) calculateSpreadPercentage(fast, slow float64) fl
 	if slow == 0 {
 		return 0
 	}
-	
+
 	// Calculate percentage difference
 	percentageDiff := ((fast - slow) / slow) * 100
 	if percentageDiff < 0 {
 		percentageDiff = -percentageDiff
 	}
-	
+
 	return percentageDiff
 }

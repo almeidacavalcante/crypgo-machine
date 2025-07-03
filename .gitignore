@@ -6,6 +6,7 @@
 *.dylib
 *.test
 *.out
+crypgo-machine
 
 # Output of `go build`
 /bin/
