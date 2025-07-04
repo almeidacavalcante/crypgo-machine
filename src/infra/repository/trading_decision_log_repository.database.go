@@ -34,9 +34,9 @@ func (r *TradingDecisionLogRepositoryDatabase) Save(log *entity.TradingDecisionL
 	query := `
 		INSERT INTO trading_decision_logs (
 			id, trading_bot_id, decision, strategy_name, 
-			analysis_data, market_data, current_price, timestamp
+			analysis_data, market_data, current_price, current_possible_profit, timestamp
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 
 	_, err = r.db.Exec(query,
@@ -47,6 +47,7 @@ func (r *TradingDecisionLogRepositoryDatabase) Save(log *entity.TradingDecisionL
 		string(analysisDataJson),
 		string(marketDataJson),
 		log.GetCurrentPrice(),
+		log.GetCurrentPossibleProfit(),
 		log.GetTimestamp(),
 	)
 
@@ -60,7 +61,7 @@ func (r *TradingDecisionLogRepositoryDatabase) GetByTradingBotId(tradingBotId st
 func (r *TradingDecisionLogRepositoryDatabase) GetByTradingBotIdWithLimit(tradingBotId string, limit int) ([]*entity.TradingDecisionLog, error) {
 	query := `
 		SELECT id, trading_bot_id, decision, strategy_name, 
-			   analysis_data, market_data, current_price, timestamp
+			   analysis_data, market_data, current_price, current_possible_profit, timestamp
 		FROM trading_decision_logs 
 		WHERE trading_bot_id = $1 
 		ORDER BY timestamp DESC
@@ -79,18 +80,19 @@ func (r *TradingDecisionLogRepositoryDatabase) GetByTradingBotIdWithLimit(tradin
 	var logs []*entity.TradingDecisionLog
 	for rows.Next() {
 		var (
-			id              string
-			botId           string
-			decision        string
-			strategyName    string
-			analysisDataStr string
-			marketDataStr   string
-			currentPrice    float64
-			timestamp       time.Time
+			id                   string
+			botId                string
+			decision             string
+			strategyName         string
+			analysisDataStr      string
+			marketDataStr        string
+			currentPrice         float64
+			currentPossibleProfit float64
+			timestamp            time.Time
 		)
 
 		if err := rows.Scan(&id, &botId, &decision, &strategyName,
-			&analysisDataStr, &marketDataStr, &currentPrice, &timestamp); err != nil {
+			&analysisDataStr, &marketDataStr, &currentPrice, &currentPossibleProfit, &timestamp); err != nil {
 			return nil, err
 		}
 
@@ -125,6 +127,7 @@ func (r *TradingDecisionLogRepositoryDatabase) GetByTradingBotIdWithLimit(tradin
 			analysisData,
 			marketData,
 			currentPrice,
+			currentPossibleProfit,
 			timestamp,
 		)
 

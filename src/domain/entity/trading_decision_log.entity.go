@@ -6,14 +6,15 @@ import (
 )
 
 type TradingDecisionLog struct {
-	Id             *vo.EntityId
-	tradingBotId   *vo.EntityId
-	decision       TradingDecision
-	strategyName   string
-	analysisData   map[string]interface{} // fast, slow, etc.
-	marketData     []vo.Kline
-	currentPrice   float64
-	timestamp      time.Time
+	Id                   *vo.EntityId
+	tradingBotId         *vo.EntityId
+	decision             TradingDecision
+	strategyName         string
+	analysisData         map[string]interface{} // fast, slow, etc.
+	marketData           []vo.Kline
+	currentPrice         float64
+	currentPossibleProfit float64 // Potential profit if position were closed now
+	timestamp            time.Time
 }
 
 func NewTradingDecisionLog(
@@ -23,16 +24,18 @@ func NewTradingDecisionLog(
 	analysisData map[string]interface{},
 	marketData []vo.Kline,
 	currentPrice float64,
+	currentPossibleProfit float64,
 ) *TradingDecisionLog {
 	return &TradingDecisionLog{
-		Id:           vo.NewEntityId(),
-		tradingBotId: tradingBotId,
-		decision:     decision,
-		strategyName: strategyName,
-		analysisData: analysisData,
-		marketData:   marketData,
-		currentPrice: currentPrice,
-		timestamp:    time.Now(),
+		Id:                   vo.NewEntityId(),
+		tradingBotId:         tradingBotId,
+		decision:             decision,
+		strategyName:         strategyName,
+		analysisData:         analysisData,
+		marketData:           marketData,
+		currentPrice:         currentPrice,
+		currentPossibleProfit: currentPossibleProfit,
+		timestamp:            time.Now(),
 	}
 }
 
@@ -44,17 +47,19 @@ func RestoreTradingDecisionLog(
 	analysisData map[string]interface{},
 	marketData []vo.Kline,
 	currentPrice float64,
+	currentPossibleProfit float64,
 	timestamp time.Time,
 ) *TradingDecisionLog {
 	return &TradingDecisionLog{
-		Id:           id,
-		tradingBotId: tradingBotId,
-		decision:     decision,
-		strategyName: strategyName,
-		analysisData: analysisData,
-		marketData:   marketData,
-		currentPrice: currentPrice,
-		timestamp:    timestamp,
+		Id:                   id,
+		tradingBotId:         tradingBotId,
+		decision:             decision,
+		strategyName:         strategyName,
+		analysisData:         analysisData,
+		marketData:           marketData,
+		currentPrice:         currentPrice,
+		currentPossibleProfit: currentPossibleProfit,
+		timestamp:            timestamp,
 	}
 }
 
@@ -88,4 +93,8 @@ func (t *TradingDecisionLog) GetCurrentPrice() float64 {
 
 func (t *TradingDecisionLog) GetTimestamp() time.Time {
 	return t.timestamp
+}
+
+func (t *TradingDecisionLog) GetCurrentPossibleProfit() float64 {
+	return t.currentPossibleProfit
 }

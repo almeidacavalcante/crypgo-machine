@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"github.com/adshao/go-binance/v2"
 	"github.com/joho/godotenv"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -41,15 +42,16 @@ func mustLoadDotenv(t *testing.T) {
 func setupTestDB(t *testing.T) *database.Connection {
 	t.Helper()
 	mustLoadDotenv(t) // Isso garante que SEMPRE carrega o .env certo
+	// Use test database configuration
 	db, err := database.NewDatabaseConnection(
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"),
+		"localhost",
+		"5433",
+		"crypgo_test",
+		"crypgo_test",
+		"crypgo_machine_test",
 	)
 	if err != nil {
-		t.Fatalf("failed to connect to DB: %v", err)
+		t.Fatalf("failed to connect to test DB: %v", err)
 	}
 	return db
 }
@@ -108,9 +110,15 @@ func TestCreateTradingBotController_MovingAverage_Success(t *testing.T) {
 
 	// Prepare request body
 	body := map[string]interface{}{
-		"symbol":   "SOLBRL",
-		"quantity": 10,
-		"strategy": "MovingAverage",
+		"symbol":                   "SOLBRL",
+		"quantity":                 10,
+		"strategy":                 "MovingAverage",
+		"interval_seconds":         3600,
+		"initial_capital":          10000.0,
+		"trade_amount":             4000.0,
+		"currency":                 "BRL",
+		"trading_fees":             0.001,
+		"minimum_profit_threshold": 5.0,
 		"params": map[string]interface{}{
 			"FastWindow": 7,
 			"SlowWindow": 21,
@@ -131,7 +139,9 @@ func TestCreateTradingBotController_MovingAverage_Success(t *testing.T) {
 	}()
 
 	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("expected status 201, got %d", resp.StatusCode)
+		// Read response body to see the error
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(body))
 	}
 
 	// Limpa após o teste
@@ -145,15 +155,21 @@ func TestCreateTradingBotController_InvalidParams(t *testing.T) {
 			t.Logf("Error closing DB: %v", err)
 		}
 	}()
-	tradeBotRepo := repository.NewTradingBotRepositoryDatabase(dbConn.DB)
+	tradeBotRepo := repository.NewTradeBotRepositoryInMemory()
 	mockMessageBroker := &MockMessageBroker{}
 	useCase := usecase.NewCreateTradingBotUseCase(tradeBotRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 	controller := api.NewCreateTradingBotController(useCase)
 
 	body := map[string]interface{}{
-		"symbol":   "SOLBRL",
-		"quantity": 1,
-		"strategy": "MovingAverage",
+		"symbol":                   "SOLBRL",
+		"quantity":                 1,
+		"strategy":                 "MovingAverage",
+		"interval_seconds":         3600,
+		"initial_capital":          10000.0,
+		"trade_amount":             4000.0,
+		"currency":                 "BRL",
+		"trading_fees":             0.001,
+		"minimum_profit_threshold": 5.0,
 		"params": map[string]interface{}{
 			"FastWindow": 7,
 			// Falta SlowWindow (inválido)
@@ -191,9 +207,15 @@ func TestCreateTradingBotController_SmallWindowDifference(t *testing.T) {
 	controller := api.NewCreateTradingBotController(useCase)
 
 	body := map[string]interface{}{
-		"symbol":   "ETHBRL",
-		"quantity": 5,
-		"strategy": "MovingAverage",
+		"symbol":                   "ETHBRL",
+		"quantity":                 5,
+		"strategy":                 "MovingAverage",
+		"interval_seconds":         3600,
+		"initial_capital":          10000.0,
+		"trade_amount":             4000.0,
+		"currency":                 "BRL",
+		"trading_fees":             0.001,
+		"minimum_profit_threshold": 5.0,
 		"params": map[string]interface{}{
 			"FastWindow": 10,
 			"SlowWindow": 11,
@@ -217,4 +239,93 @@ func TestCreateTradingBotController_SmallWindowDifference(t *testing.T) {
 	}
 
 	cleanupTradeBot(t, dbConn, "ETHBRL")
+}
+
+func TestCreateTradingBotController_MissingFinancialFields(t *testing.T) {
+	dbConn := setupTestDB(t)
+	defer func() {
+		if err := dbConn.DB.Close(); err != nil {
+			t.Logf("Error closing DB: %v", err)
+		}
+	}()
+	tradeBotRepo := repository.NewTradeBotRepositoryInMemory()
+	mockMessageBroker := &MockMessageBroker{}
+	useCase := usecase.NewCreateTradingBotUseCase(tradeBotRepo, binance.Client{}, mockMessageBroker, "test-exchange")
+	controller := api.NewCreateTradingBotController(useCase)
+
+	body := map[string]interface{}{
+		"symbol":   "SOLBRL",
+		"quantity": 10,
+		"strategy": "MovingAverage",
+		"params": map[string]interface{}{
+			"FastWindow": 7,
+			"SlowWindow": 21,
+		},
+		// Missing financial fields
+	}
+	payload, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trading/create_trading_bot", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	controller.Handle(rec, req)
+	resp := rec.Result()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Error closing response body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected status 400 for missing financial fields, got %d", resp.StatusCode)
+	}
+
+	cleanupTradeBot(t, dbConn, "SOLBRL")
+}
+
+func TestCreateTradingBotController_InvalidInitialCapital(t *testing.T) {
+	dbConn := setupTestDB(t)
+	defer func() {
+		if err := dbConn.DB.Close(); err != nil {
+			t.Logf("Error closing DB: %v", err)
+		}
+	}()
+	tradeBotRepo := repository.NewTradeBotRepositoryInMemory()
+	mockMessageBroker := &MockMessageBroker{}
+	useCase := usecase.NewCreateTradingBotUseCase(tradeBotRepo, binance.Client{}, mockMessageBroker, "test-exchange")
+	controller := api.NewCreateTradingBotController(useCase)
+
+	body := map[string]interface{}{
+		"symbol":                   "SOLBRL",
+		"quantity":                 10,
+		"strategy":                 "MovingAverage",
+		"interval_seconds":         3600,
+		"initial_capital":          0, // Invalid - should be greater than zero
+		"trade_amount":             4000.0,
+		"currency":                 "BRL",
+		"trading_fees":             0.001,
+		"minimum_profit_threshold": 5.0,
+		"params": map[string]interface{}{
+			"FastWindow": 7,
+			"SlowWindow": 21,
+		},
+	}
+	payload, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trading/create_trading_bot", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	controller.Handle(rec, req)
+	resp := rec.Result()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Error closing response body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected status 400 for invalid initial capital, got %d", resp.StatusCode)
+	}
+
+	cleanupTradeBot(t, dbConn, "SOLBRL")
 }

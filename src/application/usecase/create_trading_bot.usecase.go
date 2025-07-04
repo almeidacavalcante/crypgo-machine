@@ -33,11 +33,16 @@ func NewCreateTradingBotUseCase(
 }
 
 type InputCreateTradingBot struct {
-	Symbol          string
-	Quantity        float64
-	Strategy        string
-	Params          interface{}
-	IntervalSeconds int
+	Symbol                   string      `json:"symbol"`
+	Quantity                 float64     `json:"quantity"`
+	Strategy                 string      `json:"strategy"`
+	Params                   interface{} `json:"params"`
+	IntervalSeconds          int         `json:"interval_seconds"`
+	InitialCapital           float64     `json:"initial_capital"`
+	TradeAmount              float64     `json:"trade_amount"`
+	Currency                 string      `json:"currency"`
+	TradingFees              float64     `json:"trading_fees"`
+	MinimumProfitThreshold   float64     `json:"minimum_profit_threshold"`
 }
 
 func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
@@ -47,6 +52,18 @@ func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
 	}
 	if input.Quantity <= 0 {
 		return fmt.Errorf("invalid quantity: must be greater than zero")
+	}
+	if input.InitialCapital <= 0 {
+		return fmt.Errorf("invalid initial capital: must be greater than zero")
+	}
+	if input.TradeAmount <= 0 {
+		return fmt.Errorf("invalid trade amount: must be greater than zero")
+	}
+	if input.TradingFees < 0 {
+		return fmt.Errorf("invalid trading fees: must be greater than or equal to zero")
+	}
+	if input.MinimumProfitThreshold < 0 {
+		return fmt.Errorf("invalid minimum profit threshold: must be greater than or equal to zero")
 	}
 
 	strategy, errStrategy := service.NewTradeStrategyFactory(input.Strategy, input.Params)
@@ -59,6 +76,11 @@ func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
 		input.Quantity,
 		strategy,
 		input.IntervalSeconds,
+		input.InitialCapital,
+		input.TradeAmount,
+		input.Currency,
+		input.TradingFees,
+		input.MinimumProfitThreshold,
 	)
 
 	errSave := uc.tradingBotRepository.Save(bot)

@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: crypgo-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crypgo_prod
+      POSTGRES_PASSWORD: ALTERE_ESTA_SENHA_FORTE_123!
+      POSTGRES_DB: crypgo_machine_prod
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - /opt/crypgo-machine/backups:/backups
+    networks:
+      - crypgo-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crypgo_prod -d crypgo_machine_prod"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: crypgo-rabbitmq-prod
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: ALTERE_ESTA_SENHA_RABBITMQ_456!
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # Management interface
+    volumes:
+      - rabbitmq_prod_data:/var/lib/rabbitmq
+    networks:
+      - crypgo-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Opcional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: crypgo-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - crypgo-network
+    depends_on:
+      - postgres
+      - rabbitmq
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  crypgo-network:
+    driver: bridge
+    name: crypgo-network
+
+volumes:
+  postgres_prod_data:
+    driver: local
+    name: crypgo_postgres_prod_data
+  rabbitmq_prod_data:
+    driver: local
+    name: crypgo_rabbitmq_prod_data

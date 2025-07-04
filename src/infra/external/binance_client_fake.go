@@ -17,6 +17,8 @@ type BinanceClientInterface interface {
 type KlinesServiceInterface interface {
 	Symbol(string) KlinesServiceInterface
 	Interval(string) KlinesServiceInterface
+	StartTime(int64) KlinesServiceInterface
+	EndTime(int64) KlinesServiceInterface
 	Limit(int) KlinesServiceInterface
 	Do(context.Context) ([]*binance.Kline, error)
 }
@@ -88,10 +90,12 @@ func (f *BinanceClientFake) NewGetAccountService() GetAccountServiceInterface {
 
 // FakeKlinesService simulates the Binance KlinesService
 type FakeKlinesService struct {
-	client   *BinanceClientFake
-	symbol   string
-	interval string
-	limit    int
+	client    *BinanceClientFake
+	symbol    string
+	interval  string
+	startTime int64
+	endTime   int64
+	limit     int
 }
 
 func (s *FakeKlinesService) Symbol(symbol string) KlinesServiceInterface {
@@ -101,6 +105,16 @@ func (s *FakeKlinesService) Symbol(symbol string) KlinesServiceInterface {
 
 func (s *FakeKlinesService) Interval(interval string) KlinesServiceInterface {
 	s.interval = interval
+	return s
+}
+
+func (s *FakeKlinesService) StartTime(startTime int64) KlinesServiceInterface {
+	s.startTime = startTime
+	return s
+}
+
+func (s *FakeKlinesService) EndTime(endTime int64) KlinesServiceInterface {
+	s.endTime = endTime
 	return s
 }
 
@@ -317,6 +331,16 @@ func (s *RealKlinesService) Symbol(symbol string) KlinesServiceInterface {
 
 func (s *RealKlinesService) Interval(interval string) KlinesServiceInterface {
 	s.service = s.service.Interval(interval)
+	return s
+}
+
+func (s *RealKlinesService) StartTime(startTime int64) KlinesServiceInterface {
+	s.service = s.service.StartTime(startTime)
+	return s
+}
+
+func (s *RealKlinesService) EndTime(endTime int64) KlinesServiceInterface {
+	s.service = s.service.EndTime(endTime)
 	return s
 }
 

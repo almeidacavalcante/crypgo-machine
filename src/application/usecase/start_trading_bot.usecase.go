@@ -89,6 +89,15 @@ func (uc *StartTradingBotUseCase) executeAnalysisAndTrade(tradingBot *entity.Tra
 
 	// Create and save decision log
 	currentPrice := klines[len(klines)-1].Close()
+	
+	// Extract possible profit from analysis data, defaulting to 0.0 if not found
+	possibleProfit := 0.0
+	if profit, exists := analysisResult.AnalysisData["possibleProfit"]; exists {
+		if profitFloat, ok := profit.(float64); ok {
+			possibleProfit = profitFloat
+		}
+	}
+	
 	decisionLog := entity.NewTradingDecisionLog(
 		tradingBot.Id,
 		analysisResult.Decision,
@@ -96,6 +105,7 @@ func (uc *StartTradingBotUseCase) executeAnalysisAndTrade(tradingBot *entity.Tra
 		analysisResult.AnalysisData,
 		klines,
 		currentPrice,
+		possibleProfit,
 	)
 
 	if err := uc.tradingDecisionLogRepository.Save(decisionLog); err != nil {
@@ -148,8 +158,21 @@ func (uc *StartTradingBotUseCase) executeTradingDecision(tradingBot *entity.Trad
 			return fmt.Errorf("this trading bot already has an open position")
 		}
 		fmt.Printf("🟢 Executing BUY order for %s, quantity: %.6f\n", symbol, quantity)
+		
+		// Get current price for entry price tracking
+		klines, err := uc.getMarketData(symbol)
+		if err != nil {
+			fmt.Printf("❌ Error fetching current price for entry tracking: %v\n", err)
+			return err
+		}
+		currentPrice := klines[len(klines)-1].Close()
+		
 		isOrderPlaced := uc.placeBuyOrder(symbol, quantity)
 		if isOrderPlaced {
+			// Set entry price when entering position
+			tradingBot.SetEntryPrice(currentPrice)
+			fmt.Printf("📈 Entry price set to: %.2f for bot %s\n", currentPrice, tradingBot.Id.GetValue())
+			
 			errPosition := tradingBot.GetIntoPosition()
 			if errPosition != nil {
 				return errPosition
@@ -164,9 +187,24 @@ func (uc *StartTradingBotUseCase) executeTradingDecision(tradingBot *entity.Trad
 		if !tradingBot.GetIsPositioned() {
 			return fmt.Errorf("this trading bot don't have an open position")
 		}
-		fmt.Printf("🔴 Executing SELL order for %s, quantity: %.6f\n", symbol, quantity)
+		
+		// Calculate and log the actual profit before selling
+		klines, err := uc.getMarketData(symbol)
+		if err != nil {
+			fmt.Printf("❌ Error fetching current price for profit calculation: %v\n", err)
+			return err
+		}
+		currentPrice := klines[len(klines)-1].Close()
+		actualProfit := ((currentPrice - tradingBot.GetEntryPrice()) / tradingBot.GetEntryPrice()) * 100
+		
+		fmt.Printf("🔴 Executing SELL order for %s, quantity: %.6f (Profit: %.2f%%)\n", symbol, quantity, actualProfit)
+		
 		isOrderPlaced := uc.placeSellOrder(symbol, quantity)
 		if isOrderPlaced {
+			// Clear entry price when exiting position
+			tradingBot.ClearEntryPrice()
+			fmt.Printf("📉 Entry price cleared for bot %s after profitable sale\n", tradingBot.Id.GetValue())
+			
 			errPosition := tradingBot.GetOutOfPosition()
 			if errPosition != nil {
 				return errPosition
@@ -178,7 +216,19 @@ func (uc *StartTradingBotUseCase) executeTradingDecision(tradingBot *entity.Trad
 		}
 		return nil
 	case entity.Hold:
-		fmt.Printf("⏸ HOLDING position for %s\n", symbol)
+		if tradingBot.GetIsPositioned() {
+			// Log potential profit when holding a position
+			klines, err := uc.getMarketData(symbol)
+			if err == nil {
+				currentPrice := klines[len(klines)-1].Close()
+				potentialProfit := ((currentPrice - tradingBot.GetEntryPrice()) / tradingBot.GetEntryPrice()) * 100
+				fmt.Printf("⏸ HOLDING position for %s (Current potential profit: %.2f%%)\n", symbol, potentialProfit)
+			} else {
+				fmt.Printf("⏸ HOLDING position for %s\n", symbol)
+			}
+		} else {
+			fmt.Printf("⏸ HOLDING (no position) for %s\n", symbol)
+		}
 	}
 
 	return nil

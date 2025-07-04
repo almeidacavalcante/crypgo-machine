@@ -2,9 +2,11 @@
   "strategy_name": "MovingAverage",
   "symbol": "SOLBRL",
   "initial_capital": 10000.0,
+  "trade_amount": 4000.0,
   "currency": "BRL",
-  "trading_fees": 0.015,
-  "start_date": "2025-02-15T00:00:00Z",
-  "interval": "1m",
+  "trading_fees": 0.001,
+  "start_date": "2025-06-01T00:00:00Z",
+  "interval": "1h",
+  "minimum_profit_threshold": 5,
   "use_binance_data": true
 }

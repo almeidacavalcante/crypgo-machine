@@ -41,11 +41,16 @@ func (c *CreateTradingBotController) Handle(w http.ResponseWriter, r *http.Reque
 	}
 
 	input := usecase.InputCreateTradingBot{
-		Symbol:          rawInput.Symbol,
-		Quantity:        rawInput.Quantity,
-		Strategy:        rawInput.Strategy,
-		Params:          params,
-		IntervalSeconds: rawInput.IntervalSeconds,
+		Symbol:                   rawInput.Symbol,
+		Quantity:                 rawInput.Quantity,
+		Strategy:                 rawInput.Strategy,
+		Params:                   params,
+		IntervalSeconds:          rawInput.IntervalSeconds,
+		InitialCapital:           rawInput.InitialCapital,
+		TradeAmount:              rawInput.TradeAmount,
+		Currency:                 rawInput.Currency,
+		TradingFees:              rawInput.TradingFees,
+		MinimumProfitThreshold:   rawInput.MinimumProfitThreshold,
 	}
 
 	if err := c.CreateTradingBot.Execute(input); err != nil {

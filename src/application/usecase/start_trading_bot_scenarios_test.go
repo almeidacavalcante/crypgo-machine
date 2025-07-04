@@ -46,7 +46,7 @@ func TestMovingAverageStrategy_AntiWhipsawScenarios(t *testing.T) {
 			symbol, _ := vo.NewSymbol("BTCUSDT")
 			minimumSpread, _ := vo.NewMinimumSpread(tt.minimumSpread)
 			strategy := entity.NewMovingAverageStrategyWithSpread(7, 40, minimumSpread)
-			bot := entity.NewTradingBot(symbol, 0.001, strategy, 60)
+			bot := entity.NewTradingBot(symbol, 0.001, strategy, 60, 10000.0, 1000.0, "USDT", 0.001, 0.0)
 			
 			// Set bot position if needed
 			if tt.botPositioned {
@@ -129,6 +129,7 @@ func TestTradingDecisionLog_FullWorkflow(t *testing.T) {
 			analysisResult.AnalysisData,
 			klines,
 			currentPrice,
+			0.0, // currentPossibleProfit for test
 		)
 		
 		err = decisionLogRepo.Save(decisionLog)

@@ -56,6 +56,10 @@ func (s *MovingAverageStrategy) Decide(klines []vo.Kline, tradingBot *TradingBot
 
 	// Check if spread is sufficient to avoid whipsaw signals
 	hasSufficientSpread := s.MinimumSpread.HasSufficientSpread(fast, slow)
+	
+	// Calculate possible profit if positioned
+	entryPrice := tradingBot.GetEntryPrice()
+	possibleProfit := s.calculatePossibleProfit(entryPrice, currentPrice)
 
 	analysisData := map[string]interface{}{
 		"fast":                fast,
@@ -65,19 +69,24 @@ func (s *MovingAverageStrategy) Decide(klines []vo.Kline, tradingBot *TradingBot
 		"hasSufficientSpread": hasSufficientSpread,
 		"minimumSpread":       s.MinimumSpread.GetValue(),
 		"actualSpread":        s.calculateSpreadPercentage(fast, slow),
+		"entryPrice":          entryPrice,
+		"possibleProfit":      possibleProfit,
 	}
 
 	var decision TradingDecision
 
-	if fast > slow && !tradingBot.GetIsPositioned() && hasSufficientSpread {
+	// Buy low (fast < slow), sell high (fast > slow) strategy
+	if fast < slow && !tradingBot.GetIsPositioned() && hasSufficientSpread {
 		decision = Buy
 		analysisData["reason"] = "fast_below_slow_buy_low"
-	} else if fast < slow && tradingBot.GetIsPositioned() {
-		decision = Sell
-		if hasSufficientSpread {
-			analysisData["reason"] = "fast_above_slow_sell_high"
+	} else if fast > slow && tradingBot.GetIsPositioned() {
+		// Check if selling would be profitable (never sell at a loss)
+		if possibleProfit > 0 {
+			decision = Sell
+			analysisData["reason"] = "fast_above_slow_sell_high_with_profit"
 		} else {
-			analysisData["reason"] = "fast_above_slow_sell_high_no_spread"
+			decision = Hold
+			analysisData["reason"] = "fast_above_slow_hold_avoid_loss"
 		}
 	} else {
 		decision = Hold
@@ -85,10 +94,12 @@ func (s *MovingAverageStrategy) Decide(klines []vo.Kline, tradingBot *TradingBot
 			analysisData["reason"] = "fast_below_slow_insufficient_spread_wait"
 		} else if fast > slow && !tradingBot.GetIsPositioned() {
 			analysisData["reason"] = "fast_above_slow_wait_for_dip"
-		} else if fast < slow {
-			analysisData["reason"] = "fast_below_slow_already_positioned"
+		} else if fast < slow && tradingBot.GetIsPositioned() {
+			analysisData["reason"] = "fast_below_slow_positioned_holding"
+		} else if fast > slow && tradingBot.GetIsPositioned() {
+			analysisData["reason"] = "fast_above_slow_positioned_waiting_for_profit"
 		} else {
-			analysisData["reason"] = "fast_equals_slow"
+			analysisData["reason"] = "fast_equals_slow_neutral"
 		}
 	}
 
@@ -115,4 +126,14 @@ func (s *MovingAverageStrategy) calculateSpreadPercentage(fast, slow float64) fl
 	}
 
 	return percentageDiff
+}
+
+// calculatePossibleProfit calculates the potential profit percentage if position were closed now
+func (s *MovingAverageStrategy) calculatePossibleProfit(entryPrice, currentPrice float64) float64 {
+	if entryPrice == 0 {
+		return 0.0 // No position open
+	}
+	
+	// Calculate profit/loss percentage
+	return ((currentPrice - entryPrice) / entryPrice) * 100
 }

@@ -79,10 +79,16 @@ func TestCreateTradingBotUseCase_Success(t *testing.T) {
 	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
 	input := InputCreateTradingBot{
-		Symbol:   "SOLBRL",
-		Quantity: 1.5,
-		Strategy: "MovingAverage",
-		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Symbol:                   "SOLBRL",
+		Quantity:                 1.5,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
 	}
 
 	err := uc.Execute(input)
@@ -97,10 +103,16 @@ func TestCreateTradingBotUseCase_InvalidSymbol(t *testing.T) {
 	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
 	input := InputCreateTradingBot{
-		Symbol:   "INVALID",
-		Quantity: 1,
-		Strategy: "MovingAverage",
-		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Symbol:                   "INVALID",
+		Quantity:                 1,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
 	}
 
 	err := uc.Execute(input)
@@ -119,10 +131,16 @@ func TestCreateTradingBotUseCase_RepoError(t *testing.T) {
 	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
 	input := InputCreateTradingBot{
-		Symbol:   "SOLBRL",
-		Quantity: 2.0,
-		Strategy: "MovingAverage",
-		Params:   service.MovingAverageParams{FastWindow: 10, SlowWindow: 20},
+		Symbol:                   "SOLBRL",
+		Quantity:                 2.0,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 10, SlowWindow: 20},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
 	}
 
 	err := uc.Execute(input)
@@ -137,10 +155,16 @@ func TestCreateTradingBotUseCase_InvalidQuantity(t *testing.T) {
 	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
 	input := InputCreateTradingBot{
-		Symbol:   "SOLBRL",
-		Quantity: 0, // Inválido
-		Strategy: "MovingAverage",
-		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Symbol:                   "SOLBRL",
+		Quantity:                 0, // Inválido
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
 	}
 
 	err := uc.Execute(input)
@@ -155,10 +179,16 @@ func TestCreateTradingBotUseCase_UnknownStrategy(t *testing.T) {
 	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
 	input := InputCreateTradingBot{
-		Symbol:   "SOLBRL",
-		Quantity: 1.0,
-		Strategy: "NotARealStrategy", // Não existe
-		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Symbol:                   "SOLBRL",
+		Quantity:                 1.0,
+		Strategy:                 "NotARealStrategy", // Não existe
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
 	}
 
 	err := uc.Execute(input)
@@ -177,10 +207,16 @@ func TestCreateTradingBotUseCase_DuplicateBot(t *testing.T) {
 	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
 	input := InputCreateTradingBot{
-		Symbol:   "SOLBRL",
-		Quantity: 1.0,
-		Strategy: "MovingAverage",
-		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Symbol:                   "SOLBRL",
+		Quantity:                 1.0,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
 	}
 
 	err := uc.Execute(input)
@@ -201,16 +237,28 @@ func TestCreateTradingBotUseCase_MultipleBotsDifferentParams(t *testing.T) {
 	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
 	input1 := InputCreateTradingBot{
-		Symbol:   "SOLBRL",
-		Quantity: 1.0,
-		Strategy: "MovingAverage",
-		Params:   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		Symbol:                   "SOLBRL",
+		Quantity:                 1.0,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
 	}
 	input2 := InputCreateTradingBot{
-		Symbol:   "SOLBRL",
-		Quantity: 2.0,
-		Strategy: "MovingAverage",
-		Params:   service.MovingAverageParams{FastWindow: 9, SlowWindow: 30},
+		Symbol:                   "SOLBRL",
+		Quantity:                 2.0,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 9, SlowWindow: 30},
+		IntervalSeconds:          3600,
+		InitialCapital:           15000.0,
+		TradeAmount:              6000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
 	}
 
 	err1 := uc.Execute(input1)
@@ -220,5 +268,101 @@ func TestCreateTradingBotUseCase_MultipleBotsDifferentParams(t *testing.T) {
 	}
 	if callCount != 2 {
 		t.Errorf("expected 2 saves, got %d", callCount)
+	}
+}
+
+func TestCreateTradingBotUseCase_InvalidInitialCapital(t *testing.T) {
+	mockRepo := &MockTradeBotRepository{}
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
+
+	input := InputCreateTradingBot{
+		Symbol:                   "SOLBRL",
+		Quantity:                 1.0,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           0, // Invalid
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
+	}
+
+	err := uc.Execute(input)
+	if err == nil || err.Error() != "invalid initial capital: must be greater than zero" {
+		t.Errorf("expected initial capital error, got %v", err)
+	}
+}
+
+func TestCreateTradingBotUseCase_InvalidTradeAmount(t *testing.T) {
+	mockRepo := &MockTradeBotRepository{}
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
+
+	input := InputCreateTradingBot{
+		Symbol:                   "SOLBRL",
+		Quantity:                 1.0,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              -1000.0, // Invalid
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   5.0,
+	}
+
+	err := uc.Execute(input)
+	if err == nil || err.Error() != "invalid trade amount: must be greater than zero" {
+		t.Errorf("expected trade amount error, got %v", err)
+	}
+}
+
+func TestCreateTradingBotUseCase_InvalidTradingFees(t *testing.T) {
+	mockRepo := &MockTradeBotRepository{}
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
+
+	input := InputCreateTradingBot{
+		Symbol:                   "SOLBRL",
+		Quantity:                 1.0,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              -0.001, // Invalid
+		MinimumProfitThreshold:   5.0,
+	}
+
+	err := uc.Execute(input)
+	if err == nil || err.Error() != "invalid trading fees: must be greater than or equal to zero" {
+		t.Errorf("expected trading fees error, got %v", err)
+	}
+}
+
+func TestCreateTradingBotUseCase_InvalidMinimumProfitThreshold(t *testing.T) {
+	mockRepo := &MockTradeBotRepository{}
+	mockMessageBroker := &MockMessageBroker{}
+	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
+
+	input := InputCreateTradingBot{
+		Symbol:                   "SOLBRL",
+		Quantity:                 1.0,
+		Strategy:                 "MovingAverage",
+		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+		IntervalSeconds:          3600,
+		InitialCapital:           10000.0,
+		TradeAmount:              4000.0,
+		Currency:                 "BRL",
+		TradingFees:              0.001,
+		MinimumProfitThreshold:   -1.0, // Invalid
+	}
+
+	err := uc.Execute(input)
+	if err == nil || err.Error() != "invalid minimum profit threshold: must be greater than or equal to zero" {
+		t.Errorf("expected minimum profit threshold error, got %v", err)
 	}
 }
