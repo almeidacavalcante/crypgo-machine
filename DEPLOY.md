@@ -9,41 +9,62 @@ Este guia irá te ajudar a fazer o deploy completo do CrypGo Trading Bot na sua 
 - Pelo menos 2GB de RAM
 - 20GB de espaço em disco
 
-## 🔧 Processo de Instalação
+## 🚀 Instalação Rápida
 
-### 1. **Preparar sua VPS**
+**Método 1: Transferir projeto do seu PC (Recomendado até subir no GitHub)**
 
 ```bash
-# Conectar na VPS
-ssh root@31.97.249.4
+# No seu PC - criar arquivo compactado
+cd /Users/almeida/GolandProjects/
+tar --exclude='.git' --exclude='*.log' --exclude='tmp' -czf crypgo-machine.tar.gz crypgo-machine/
 
-# Executar script de instalação automática
-curl -fsSL https://raw.githubusercontent.com/seu-usuario/crypgo-machine/main/scripts/install-vps.sh | bash
+# Transferir para VPS e instalar tudo
+scp crypgo-machine.tar.gz root@31.97.249.4:/tmp/
+ssh root@31.97.249.4 "cd /tmp && tar -xzf crypgo-machine.tar.gz && cd crypgo-machine && chmod +x scripts/*.sh && ./scripts/install-vps.sh && mv /tmp/crypgo-machine /opt/ && cd /opt/crypgo-machine && nano .env.production"
 ```
 
-### 2. **Transferir o Projeto**
-
-No seu computador local:
+**Método 2: Via GitHub (quando estiver público)**
 
 ```bash
-# Criar arquivo compactado (excluindo arquivos desnecessários)
+ssh root@31.97.249.4 "curl -fsSL https://raw.githubusercontent.com/almeidacavalcante/crypgo-machine/main/scripts/install-vps.sh | bash && cd /opt && git clone https://github.com/almeidacavalcante/crypgo-machine.git && cd crypgo-machine && chmod +x scripts/*.sh"
+```
+
+Depois execute o deploy:
+
+```bash
+ssh root@31.97.249.4
+cd /opt/crypgo-machine
+# Editar suas chaves da Binance
+nano .env.production  
+# Executar deploy
+./scripts/deploy.sh
+```
+
+## 🔧 Processo de Instalação Detalhado
+
+### 1. **Transferir o Projeto para VPS**
+
+```bash
+# No seu PC - criar arquivo compactado
 cd /Users/almeida/GolandProjects/
-tar --exclude='.git' --exclude='node_modules' --exclude='*.log' --exclude='tmp' -czf crypgo-machine.tar.gz crypgo-machine/
+tar --exclude='.git' --exclude='*.log' --exclude='tmp' -czf crypgo-machine.tar.gz crypgo-machine/
 
 # Transferir para VPS
 scp crypgo-machine.tar.gz root@31.97.249.4:/opt/
-```
 
-Na VPS:
-
-```bash
-# Extrair projeto
+# Na VPS - extrair e configurar
+ssh root@31.97.249.4
 cd /opt
 tar -xzf crypgo-machine.tar.gz
 cd crypgo-machine
-
-# Dar permissões aos scripts
 chmod +x scripts/*.sh
+```
+
+### 2. **Instalar Dependências na VPS**
+
+```bash
+# Executar script de instalação automática
+./scripts/install-vps.sh
 ```
 
 ### 3. **Configurar Ambiente de Produção**
@@ -121,11 +142,44 @@ sudo systemctl stop crypgo-machine
 sudo systemctl start crypgo-machine
 ```
 
+### Endpoints da API:
+
+- **Lista de Bots**: `http://31.97.249.4:8080/api/v1/trading/list`
+- **Criar Bot**: `http://31.97.249.4:8080/api/v1/trading/create_trading_bot`
+- **Iniciar Bot**: `http://31.97.249.4:8080/api/v1/trading/start`
+- **Backtest**: `http://31.97.249.4:8080/api/v1/trading/backtest`
+
 ### Interfaces Web:
 
 - **RabbitMQ Management**: `http://31.97.249.4:15672`
   - User: `admin`
   - Password: (conforme configurado em .env.production)
+
+### Testes de API:
+
+```bash
+# Testar se API está funcionando
+curl http://31.97.249.4:8080/api/v1/trading/list
+
+# Criar um bot de exemplo
+curl -X POST http://31.97.249.4:8080/api/v1/trading/create_trading_bot \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "SOLBRL",
+    "quantity": 0.02,
+    "strategy": "MovingAverage",
+    "params": {
+      "FastWindow": 7,
+      "SlowWindow": 40
+    },
+    "interval_seconds": 1800,
+    "initial_capital": 10000.0,
+    "trade_amount": 4000.0,
+    "currency": "BRL",
+    "trading_fees": 0.001,
+    "minimum_profit_threshold": 5.0
+  }'
+```
 
 ## 💾 Backup e Recuperação
 
@@ -147,6 +201,26 @@ gunzip /opt/crypgo-machine/backups/crypgo_machine_backup_YYYYMMDD_HHMMSS.sql.gz
 PGPASSWORD='sua_senha' psql -h localhost -U crypgo_prod -d crypgo_machine_prod < backup_file.sql
 ```
 
+## 📤 Subir Projeto para GitHub (Opcional)
+
+Para usar o método de instalação via GitHub, primeiro suba o projeto:
+
+```bash
+# No seu PC local
+cd /Users/almeida/GolandProjects/crypgo-machine
+
+# Adicionar todos os arquivos (incluindo scripts)
+git add .
+git commit -m "feat: adicionar scripts de deploy e configurações de produção"
+git push origin main
+
+# Verificar se subiu corretamente
+echo "Verifique se o arquivo existe em:"
+echo "https://raw.githubusercontent.com/almeidacavalcante/crypgo-machine/main/scripts/install-vps.sh"
+```
+
+Depois disso, você pode usar o método via GitHub no README.
+
 ## 🔄 Atualizações
 
 Para atualizar a aplicação:
@@ -158,11 +232,11 @@ sudo systemctl stop crypgo-machine
 # 2. Fazer backup
 ./scripts/backup-database.sh
 
-# 3. Atualizar código (git pull ou transferir novo arquivo)
-# ...
+# 3. Atualizar código do GitHub
+git pull origin main
 
 # 4. Recompilar
-go build -o crypgo-machine main.go
+go build -ldflags="-w -s" -o crypgo-machine main.go
 
 # 5. Aplicar novas migrations (se houver)
 ./scripts/run-migrations.sh
@@ -170,6 +244,21 @@ go build -o crypgo-machine main.go
 # 6. Reiniciar aplicação
 sudo systemctl start crypgo-machine
 ```
+
+### Atualização Rápida (Recomendado):
+
+```bash
+# Usar o script de atualização automática
+./scripts/update.sh
+```
+
+Este script irá:
+- ✅ Fazer backup automático
+- ✅ Verificar atualizações no GitHub
+- ✅ Atualizar código automaticamente
+- ✅ Recompilar a aplicação
+- ✅ Aplicar novas migrations
+- ✅ Reiniciar a aplicação
 
 ## 🚨 Solução de Problemas
 
