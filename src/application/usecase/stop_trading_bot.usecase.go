@@ -47,7 +47,7 @@ func (uc *StopTradingBotUseCase) Execute(input InputStopTradingBot) error {
 	// Set bot status to STOPPED
 	bot.Stop()
 
-	err = uc.tradingBotRepository.Save(bot)
+	err = uc.tradingBotRepository.Update(bot)
 	if err != nil {
 		return fmt.Errorf("failed to stop trading bot: %v", err)
 	}
