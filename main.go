@@ -67,6 +67,10 @@ func main() {
 	startTradingBotController := api.NewStartTradingBotController(startTradingBotUseCase)
 	http.HandleFunc("/api/v1/trading/start", startTradingBotController.Handle)
 
+	stopTradingBotUseCase := usecase.NewStopTradingBotUseCase(tradingBotRepository)
+	stopTradingBotController := api.NewStopTradingBotController(stopTradingBotUseCase)
+	http.HandleFunc("/api/v1/trading/stop", stopTradingBotController.Handle)
+
 	backtestStrategyUseCase := usecase.NewBacktestStrategyUseCase()
 	historicalDataService := external.NewBinanceHistoricalDataService(binanceWrapper)
 	backtestStrategyController := api.NewBacktestStrategyController(backtestStrategyUseCase, historicalDataService)

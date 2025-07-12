@@ -1,0 +1,17 @@
+SOLBRL   3    20   2.0      0.5      5000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  
+SOLBRL   3    20   5.0      0.5      5000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  
+SOLBRL   3    45   2.0      0.5      5000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  
+SOLBRL   3    45   5.0      0.5      5000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  
+SOLBRL   5    20   2.0      0.5      5000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  
+SOLBRL   5    20   5.0      0.5      5000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  
+SOLBRL   5    45   2.0      0.5      5000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  
+SOLBRL   5    45   5.0      0.5      5000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  
+
+=================================================================================================
+## RESUMO FINAL
+
+🏆 MELHOR CONFIGURAÇÃO:
+   ROI: -999%
+   Parâmetros: 
+   Arquivo: 
+

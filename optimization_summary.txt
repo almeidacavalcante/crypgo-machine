@@ -1,0 +1,6 @@
+SOLBRL   3    10   0.5      0.2      500      ERROR    ERROR    ERROR    ERROR    NO_FILE     
+SOLBRL   3    10   0.5      0.2      1000     ERROR    ERROR    ERROR    ERROR    NO_FILE     
+SOLBRL   3    10   0.5      0.2      2000     ERROR    ERROR    ERROR    ERROR    NO_FILE     
+SOLBRL   3    10   0.5      0.5      500      ERROR    ERROR    ERROR    ERROR    NO_FILE     
+SOLBRL   3    10   0.5      0.5      1000     ERROR    ERROR    ERROR    ERROR    NO_FILE     
+SOLBRL   3    10   0.5      0.5      2000     FAILED   FAILED   FAILED   FAILED   EXEC_ERROR  

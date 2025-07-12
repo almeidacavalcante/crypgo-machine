@@ -1,0 +1,15 @@
+{
+  "symbol": "SOLBRL",
+  "quantity": 0.1,
+  "strategy": "MovingAverage",
+  "params": {
+    "FastWindow": 3,
+    "SlowWindow": 10
+  },
+  "interval_seconds": 1800,
+  "initial_capital": 5000.0,
+  "trade_amount": 5000.0,
+  "currency": "BRL",
+  "trading_fees": 0.01,
+  "minimum_profit_threshold": 5.0
+}

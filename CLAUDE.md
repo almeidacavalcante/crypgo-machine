@@ -13,14 +13,14 @@ This is a cryptocurrency trading bot application built in Go using Domain-Driven
 - **Domain Services**: Strategy factory with type-safe parameter validation
 
 ### Application Layer (`src/application/`)
-- **Use Cases**: Create, list, and start trading bots with comprehensive business logic
+- **Use Cases**: Create, list, start, and stop trading bots with comprehensive business logic
 - **Repository Interfaces**: Clean abstraction over data persistence
 
 ### Infrastructure Layer (`src/infra/`)
 - **Database**: PostgreSQL with manual SQL migrations
 - **External APIs**: Binance integration with interface-based design for testability
 - **Message Queue**: RabbitMQ adapter for event-driven notifications
-- **HTTP Controllers**: REST API endpoints for bot management
+- **HTTP Controllers**: REST API endpoints for bot management (create, list, start, stop)
 
 ## New Features
 
@@ -73,6 +73,33 @@ go test -v ./src/domain/vo/
 psql -d crypgo_machine -f src/infra/database/migrations/001_create_trade_bots_table.sql
 psql -d crypgo_machine -f src/infra/database/migrations/002_add_strategy_params_column.sql
 psql -d crypgo_machine -f src/infra/database/migrations/003_create_trading_decision_logs_table.sql
+```
+
+### Production Monitoring
+```bash
+# Monitor logs in real-time (basic)
+./scripts/monitor-logs.sh
+
+# Advanced dashboard with tmux (multiple windows)
+./scripts/monitor-dashboard.sh
+
+# Alert system for critical errors
+./scripts/monitor-alerts.sh
+```
+
+#### Monitoring Commands for VPS (31.97.249.4)
+```bash
+# Quick log monitoring
+ssh root@31.97.249.4 "cd /opt/crypgo-machine && docker-compose -f docker-compose.full.yml logs -f --tail 50 crypgo-app"
+
+# Check container status
+ssh root@31.97.249.4 "cd /opt/crypgo-machine && docker-compose -f docker-compose.full.yml ps"
+
+# View resource usage
+ssh root@31.97.249.4 "docker stats --no-stream"
+
+# Follow error logs only
+ssh root@31.97.249.4 "cd /opt/crypgo-machine && docker-compose -f docker-compose.full.yml logs -f | grep -i -E 'error|warn|fatal'"
 ```
 
 ## Testing Patterns and Infrastructure

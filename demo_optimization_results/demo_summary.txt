@@ -1,0 +1,6 @@
+# DEMO OTIMIZAÇÃO DE PARÂMETROS - RESULTADOS
+## Período: 2024-06-01 a 2024-06-07 (dados reais Binance)
+## Capital inicial: 5000 BRL
+
+Symbol   Fast Slow MinProfit MinSpread Amount   ROI%     Trades   WinRate% MaxDD%  
+===================================================================================

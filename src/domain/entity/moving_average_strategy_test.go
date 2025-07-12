@@ -22,7 +22,14 @@ func mustKline(close float64) vo.Kline {
 func createTestBot() *TradingBot {
 	symbol, _ := vo.NewSymbol("BTCBRL")
 	strategy := NewMovingAverageStrategy(3, 5)
-	bot := NewTradingBot(symbol, 0.001, strategy, 60)
+	bot := NewTradingBot(symbol, 0.001, strategy, 60, 1000.0, 100.0, "BRL", 0.1, 0.0)
+	return bot
+}
+
+func createTestBotWithMinimumProfit(minimumProfitThreshold float64) *TradingBot {
+	symbol, _ := vo.NewSymbol("BTCBRL")
+	strategy := NewMovingAverageStrategy(3, 5)
+	bot := NewTradingBot(symbol, 0.001, strategy, 60, 1000.0, 100.0, "BRL", 0.1, minimumProfitThreshold)
 	return bot
 }
 
@@ -109,5 +116,80 @@ func TestMovingAverageStrategy_NoSellAtLoss(t *testing.T) {
 		if profitFloat := profit.(float64); profitFloat >= 0 {
 			t.Fatalf("expected negative profit, got %.2f", profitFloat)
 		}
+	}
+}
+
+func TestMovingAverageStrategy_MinimumProfitThreshold_Sell(t *testing.T) {
+	// Test that bot sells when profit >= minimum threshold
+	klines := []vo.Kline{
+		mustKline(8), mustKline(9), mustKline(10), mustKline(10), mustKline(10),
+	}
+
+	strategy := NewMovingAverageStrategy(3, 5)
+	bot := createTestBotWithMinimumProfit(5.0) // 5% minimum profit threshold
+	_ = bot.GetIntoPosition()
+	
+	// Set entry price to create exactly 5% profit
+	// Current price is 10, entry at 9.52 gives ~5% profit
+	bot.SetEntryPrice(9.52)
+	
+	result := strategy.Decide(klines, bot)
+	if result.Decision != Sell {
+		t.Fatalf("expected Sell (profit >= threshold), got %s", result.Decision)
+	}
+	
+	// Verify minimum threshold is included in analysis data
+	if threshold, exists := result.AnalysisData["minimumProfitThreshold"]; exists {
+		if thresholdFloat := threshold.(float64); thresholdFloat != 5.0 {
+			t.Fatalf("expected minimum profit threshold 5.0, got %.2f", thresholdFloat)
+		}
+	} else {
+		t.Fatal("minimum profit threshold should be included in analysis data")
+	}
+}
+
+func TestMovingAverageStrategy_MinimumProfitThreshold_Hold(t *testing.T) {
+	// Test that bot holds when profit < minimum threshold
+	klines := []vo.Kline{
+		mustKline(8), mustKline(9), mustKline(10), mustKline(10), mustKline(10),
+	}
+
+	strategy := NewMovingAverageStrategy(3, 5)
+	bot := createTestBotWithMinimumProfit(10.0) // 10% minimum profit threshold
+	_ = bot.GetIntoPosition()
+	
+	// Set entry price to create only 5% profit (below 10% threshold)
+	// Current price is 10, entry at 9.52 gives ~5% profit
+	bot.SetEntryPrice(9.52)
+	
+	result := strategy.Decide(klines, bot)
+	if result.Decision != Hold {
+		t.Fatalf("expected Hold (profit < threshold), got %s", result.Decision)
+	}
+	
+	// Check that the reason indicates insufficient profit
+	if reason, exists := result.AnalysisData["reason"]; exists {
+		if reasonStr := reason.(string); reasonStr != "fast_above_slow_hold_insufficient_profit" {
+			t.Fatalf("expected reason 'fast_above_slow_hold_insufficient_profit', got %s", reasonStr)
+		}
+	}
+}
+
+func TestMovingAverageStrategy_ZeroMinimumProfitThreshold(t *testing.T) {
+	// Test with 0% minimum profit threshold (original behavior)
+	klines := []vo.Kline{
+		mustKline(8), mustKline(9), mustKline(10), mustKline(10), mustKline(10),
+	}
+
+	strategy := NewMovingAverageStrategy(3, 5)
+	bot := createTestBotWithMinimumProfit(0.0) // 0% minimum profit threshold
+	_ = bot.GetIntoPosition()
+	
+	// Set entry price to create minimal profit (0.1%)
+	bot.SetEntryPrice(9.99)
+	
+	result := strategy.Decide(klines, bot)
+	if result.Decision != Sell {
+		t.Fatalf("expected Sell (any profit >= 0), got %s", result.Decision)
 	}
 }

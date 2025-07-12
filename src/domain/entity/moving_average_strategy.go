@@ -11,7 +11,7 @@ type MovingAverageStrategy struct {
 }
 
 func NewMovingAverageStrategy(fast, slow int) *MovingAverageStrategy {
-	// Default minimum spread of 0.5% to avoid whipsaw signals
+
 	minimumSpread, _ := vo.NewMinimumSpread(0.5)
 
 	return &MovingAverageStrategy{
@@ -54,10 +54,8 @@ func (s *MovingAverageStrategy) Decide(klines []vo.Kline, tradingBot *TradingBot
 	slow := s.movingAverage(klines, s.SlowWindow)
 	currentPrice := klines[len(klines)-1].Close()
 
-	// Check if spread is sufficient to avoid whipsaw signals
 	hasSufficientSpread := s.MinimumSpread.HasSufficientSpread(fast, slow)
-	
-	// Calculate possible profit if positioned
+
 	entryPrice := tradingBot.GetEntryPrice()
 	possibleProfit := s.calculatePossibleProfit(entryPrice, currentPrice)
 
@@ -71,22 +69,22 @@ func (s *MovingAverageStrategy) Decide(klines []vo.Kline, tradingBot *TradingBot
 		"actualSpread":        s.calculateSpreadPercentage(fast, slow),
 		"entryPrice":          entryPrice,
 		"possibleProfit":      possibleProfit,
+		"minimumProfitThreshold": tradingBot.GetMinimumProfitThreshold(),
 	}
 
 	var decision TradingDecision
 
-	// Buy low (fast < slow), sell high (fast > slow) strategy
 	if fast < slow && !tradingBot.GetIsPositioned() && hasSufficientSpread {
 		decision = Buy
 		analysisData["reason"] = "fast_below_slow_buy_low"
 	} else if fast > slow && tradingBot.GetIsPositioned() {
-		// Check if selling would be profitable (never sell at a loss)
-		if possibleProfit > 0 {
+
+		if possibleProfit >= tradingBot.GetMinimumProfitThreshold() {
 			decision = Sell
 			analysisData["reason"] = "fast_above_slow_sell_high_with_profit"
 		} else {
 			decision = Hold
-			analysisData["reason"] = "fast_above_slow_hold_avoid_loss"
+			analysisData["reason"] = "fast_above_slow_hold_insufficient_profit"
 		}
 	} else {
 		decision = Hold
@@ -119,7 +117,6 @@ func (s *MovingAverageStrategy) calculateSpreadPercentage(fast, slow float64) fl
 		return 0
 	}
 
-	// Calculate percentage difference
 	percentageDiff := ((fast - slow) / slow) * 100
 	if percentageDiff < 0 {
 		percentageDiff = -percentageDiff
@@ -128,12 +125,10 @@ func (s *MovingAverageStrategy) calculateSpreadPercentage(fast, slow float64) fl
 	return percentageDiff
 }
 
-// calculatePossibleProfit calculates the potential profit percentage if position were closed now
 func (s *MovingAverageStrategy) calculatePossibleProfit(entryPrice, currentPrice float64) float64 {
 	if entryPrice == 0 {
-		return 0.0 // No position open
+		return 0.0
 	}
-	
-	// Calculate profit/loss percentage
+
 	return ((currentPrice - entryPrice) / entryPrice) * 100
 }
