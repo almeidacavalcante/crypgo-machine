@@ -180,10 +180,59 @@ func (uc *StartTradingBotUseCase) executeAnalysisAndTrade(tradingBot *entity.Tra
 	return true // Continue the loop
 }
 
-func (uc *StartTradingBotUseCase) getMarketData(symbol string) ([]vo.Kline, error) {
+// convertIntervalSecondsToBinanceInterval converts interval_seconds to Binance API interval format
+func convertIntervalSecondsToBinanceInterval(intervalSeconds int) string {
+	switch intervalSeconds {
+	case 60:
+		return "1m"
+	case 180:
+		return "3m"
+	case 300:
+		return "5m"
+	case 900:
+		return "15m"
+	case 1800:
+		return "30m"
+	case 3600:
+		return "1h"
+	case 7200:
+		return "2h"
+	case 14400:
+		return "4h"
+	case 21600:
+		return "6h"
+	case 28800:
+		return "8h"
+	case 43200:
+		return "12h"
+	case 86400:
+		return "1d"
+	case 259200:
+		return "3d"
+	case 604800:
+		return "1w"
+	default:
+		// Fallback: try to calculate the best match
+		if intervalSeconds < 3600 {
+			// Less than 1 hour, use minutes
+			minutes := intervalSeconds / 60
+			return fmt.Sprintf("%dm", minutes)
+		} else if intervalSeconds < 86400 {
+			// Less than 1 day, use hours
+			hours := intervalSeconds / 3600
+			return fmt.Sprintf("%dh", hours)
+		} else {
+			// Default to 1 hour for safety
+			return "1h"
+		}
+	}
+}
+
+func (uc *StartTradingBotUseCase) getMarketData(symbol string, intervalSeconds int) ([]vo.Kline, error) {
+	binanceInterval := convertIntervalSecondsToBinanceInterval(intervalSeconds)
 	binanceKlines, err := uc.client.NewKlinesService().
 		Symbol(symbol).
-		Interval("1h"). // TODO: Deixar dinamico.
+		Interval(binanceInterval).
 		Limit(100).
 		Do(context.Background())
 
@@ -221,7 +270,7 @@ func (uc *StartTradingBotUseCase) executeTradingDecision(tradingBot *entity.Trad
 		fmt.Printf("🟢 Executing BUY order for %s, quantity: %.6f\n", symbol, quantity)
 
 		// Get current price for entry price tracking
-		klines, err := uc.getMarketData(symbol)
+		klines, err := uc.getMarketData(symbol, tradingBot.GetIntervalSeconds())
 		if err != nil {
 			fmt.Printf("❌ Error fetching current price for entry tracking: %v\n", err)
 			return err
@@ -250,7 +299,7 @@ func (uc *StartTradingBotUseCase) executeTradingDecision(tradingBot *entity.Trad
 		}
 
 		// Calculate and log the actual profit before selling
-		klines, err := uc.getMarketData(symbol)
+		klines, err := uc.getMarketData(symbol, tradingBot.GetIntervalSeconds())
 		if err != nil {
 			fmt.Printf("❌ Error fetching current price for profit calculation: %v\n", err)
 			return err
@@ -279,7 +328,7 @@ func (uc *StartTradingBotUseCase) executeTradingDecision(tradingBot *entity.Trad
 	case entity.Hold:
 		if tradingBot.GetIsPositioned() {
 			// Log potential profit when holding a position
-			klines, err := uc.getMarketData(symbol)
+			klines, err := uc.getMarketData(symbol, tradingBot.GetIntervalSeconds())
 			if err == nil {
 				currentPrice := klines[len(klines)-1].Close()
 				potentialProfit := ((currentPrice - tradingBot.GetEntryPrice()) / tradingBot.GetEntryPrice()) * 100

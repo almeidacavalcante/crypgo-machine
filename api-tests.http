@@ -9,13 +9,12 @@
 
 ### 🔧 CONFIGURAÇÃO DE AMBIENTE
 ### Descomente a linha desejada para trocar entre localhost e produção:
-@baseUrl = http://localhost:8080
-# @baseUrl = http://31.97.249.4
+#@baseUrl = http://localhost:8080
+@baseUrl = http://31.97.249.4
 
 ### 📊 VARIÁVEIS ÚTEIS PARA TESTES
 ### Substitua pelos IDs reais dos bots após criá-los:
-@botIdSOLBRL = BOT_ID_AQUI
-@botIdBTCBRL = BOT_ID_AQUI
+@botIdSOLBRL = 635165ac-240c-4b07-8172-97750c14e8d1
 
 ### 🏭 IDs DOS BOTS EM PRODUÇÃO (para referência):
 ### @botIdProdSOL1 = 1b6f580e-908b-42eb-be78-9b982b91e192
@@ -38,7 +37,7 @@ Content-Type: application/json
 
 {
   "symbol": "SOLBRL",
-  "quantity": 0.1,
+  "quantity": 0.25,
   "strategy": "MovingAverage",
   "params": {
     "FastWindow": 3,
