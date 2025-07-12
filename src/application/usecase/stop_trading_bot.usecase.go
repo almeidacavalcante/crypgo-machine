@@ -26,12 +26,12 @@ func (uc *StopTradingBotUseCase) Execute(input InputStopTradingBot) error {
 		return fmt.Errorf("bot_id is required")
 	}
 
-	botId, err := vo.NewEntityId(input.BotId)
+	_, err := vo.RestoreEntityId(input.BotId)
 	if err != nil {
 		return fmt.Errorf("invalid bot_id format: %v", err)
 	}
 
-	bot, err := uc.tradingBotRepository.FindById(botId)
+	bot, err := uc.tradingBotRepository.GetTradeByID(input.BotId)
 	if err != nil {
 		return fmt.Errorf("failed to find trading bot: %v", err)
 	}
@@ -40,7 +40,7 @@ func (uc *StopTradingBotUseCase) Execute(input InputStopTradingBot) error {
 		return fmt.Errorf("trading bot not found with id: %s", input.BotId)
 	}
 
-	if bot.GetStatus() == entity.STOPPED {
+	if bot.GetStatus() == entity.StatusStopped {
 		return fmt.Errorf("trading bot is already stopped")
 	}
 

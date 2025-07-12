@@ -197,3 +197,11 @@ func (b *TradingBot) GetTradingFees() float64 {
 func (b *TradingBot) GetMinimumProfitThreshold() float64 {
 	return b.minimumProfitThreshold
 }
+
+func (b *TradingBot) Stop() error {
+	if b.status == StatusStopped {
+		return fmt.Errorf("bot is already stopped")
+	}
+	b.status = StatusStopped
+	return nil
+}
