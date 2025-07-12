@@ -86,14 +86,25 @@ func (uc *StartTradingBotUseCase) Execute(input InputStartTradingBot) error {
 
 func (uc *StartTradingBotUseCase) runStrategyLoop(tradingBot *entity.TradingBot) {
 	// Execute first analysis immediately
-	uc.executeAnalysisAndTrade(tradingBot)
+	shouldContinue := uc.executeAnalysisAndTrade(tradingBot)
+	if !shouldContinue {
+		fmt.Printf("🛑 Trading bot %s stopped before starting loop\n", tradingBot.Id.GetValue())
+		return
+	}
 
 	// Then start the ticker for subsequent executions
 	ticker := time.NewTicker(time.Duration(tradingBot.GetIntervalSeconds()) * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		uc.executeAnalysisAndTrade(tradingBot)
+	for {
+		select {
+		case <-ticker.C:
+			shouldContinue := uc.executeAnalysisAndTrade(tradingBot)
+			if !shouldContinue {
+				fmt.Printf("🛑 Trading bot %s stopped, exiting loop\n", tradingBot.Id.GetValue())
+				return // Exit the loop completely
+			}
+		}
 	}
 }
 
@@ -147,21 +158,26 @@ func (uc *StartTradingBotUseCase) ExecuteAnalysisAndTrade(tradingBot *entity.Tra
 	return nil
 }
 
-func (uc *StartTradingBotUseCase) executeAnalysisAndTrade(tradingBot *entity.TradingBot) {
+func (uc *StartTradingBotUseCase) executeAnalysisAndTrade(tradingBot *entity.TradingBot) bool {
 	currentBot, err := uc.tradingBotRepository.GetTradeByID(tradingBot.Id.GetValue())
 	if err != nil || currentBot == nil || currentBot.GetStatus() != entity.StatusRunning {
-		return
+		fmt.Printf("🔍 Trading bot %s status check: stopped or error (%v)\n", tradingBot.Id.GetValue(), err)
+		return false // Stop the loop
 	}
 
 	// Check if execution context wants to continue
 	if !uc.executionContext.ShouldContinue() {
-		return
+		fmt.Printf("🔍 Trading bot %s execution context requested stop\n", tradingBot.Id.GetValue())
+		return false // Stop the loop
 	}
 
 	// Use the public method to perform the analysis and trade
 	if err := uc.ExecuteAnalysisAndTrade(tradingBot); err != nil {
-		fmt.Printf("❌ Error in analysis and trade: %v\n", err)
+		fmt.Printf("❌ Error in analysis and trade for bot %s: %v\n", tradingBot.Id.GetValue(), err)
+		// Continue despite errors - don't stop the bot for temporary issues
 	}
+	
+	return true // Continue the loop
 }
 
 func (uc *StartTradingBotUseCase) getMarketData(symbol string) ([]vo.Kline, error) {

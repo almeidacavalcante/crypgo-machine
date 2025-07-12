@@ -1,0 +1,193 @@
+### 🚀 Teste completo da API CrypGo Machine
+### Execute cada request individualmente no GoLand (clique no ícone ▶️)
+###
+### 📖 INSTRUÇÕES DE USO:
+### 1. Para testar em LOCALHOST: mantenha @baseUrl = http://localhost:8080  
+### 2. Para testar em PRODUÇÃO: descomente # @baseUrl = http://31.97.249.4
+### 3. Após criar bots, copie os IDs e substitua as variáveis @botIdSOLBRL/@botIdBTCBRL
+### 4. Use Ctrl+Alt+R no GoLand para executar requests rapidamente
+
+### 🔧 CONFIGURAÇÃO DE AMBIENTE
+### Descomente a linha desejada para trocar entre localhost e produção:
+@baseUrl = http://localhost:8080
+# @baseUrl = http://31.97.249.4
+
+### 📊 VARIÁVEIS ÚTEIS PARA TESTES
+### Substitua pelos IDs reais dos bots após criá-los:
+@botIdSOLBRL = BOT_ID_AQUI
+@botIdBTCBRL = BOT_ID_AQUI
+
+### 🏭 IDs DOS BOTS EM PRODUÇÃO (para referência):
+### @botIdProdSOL1 = 1b6f580e-908b-42eb-be78-9b982b91e192
+### @botIdProdSOL2 = 635165ac-240c-4b07-8172-97750c14e8d1  
+### @botIdProdBTC = 23ff5375-bd10-4c71-8964-eb73e9a7de1d
+
+### ========================================
+### 📋 OPERAÇÕES BÁSICAS
+### ========================================
+
+###
+### 1. Listar todos os trading bots
+GET {{baseUrl}}/api/v1/trading/list
+Accept: application/json
+
+###
+### 2. Criar um novo trading bot (configuração campeã)
+POST {{baseUrl}}/api/v1/trading/create_trading_bot
+Content-Type: application/json
+
+{
+  "symbol": "SOLBRL",
+  "quantity": 0.1,
+  "strategy": "MovingAverage",
+  "params": {
+    "FastWindow": 3,
+    "SlowWindow": 10
+  },
+  "interval_seconds": 1800,
+  "initial_capital": 5000.0,
+  "trade_amount": 5000.0,
+  "currency": "BRL",
+  "trading_fees": 0.01,
+  "minimum_profit_threshold": 5.0
+}
+
+###
+### 3. Criar trading bot com BTCBRL
+POST {{baseUrl}}/api/v1/trading/create_trading_bot
+Content-Type: application/json
+
+{
+  "symbol": "BTCBRL",
+  "quantity": 0.001,
+  "strategy": "MovingAverage",
+  "params": {
+    "FastWindow": 7,
+    "SlowWindow": 40
+  },
+  "interval_seconds": 1800,
+  "initial_capital": 3000.0,
+  "trade_amount": 2000.0,
+  "currency": "BRL",
+  "trading_fees": 0.001,
+  "minimum_profit_threshold": 2.5
+}
+
+### ========================================
+### 🎮 CONTROLE DE TRADING BOTS
+### ========================================
+
+###
+### 4. Iniciar trading bot
+POST {{baseUrl}}/api/v1/trading/start
+Content-Type: application/json
+
+{
+  "bot_id": "{{botIdSOLBRL}}"
+}
+
+###
+### 5b. Exemplo: Parar bot específico usando ID de produção (descomente para usar)
+# POST {{baseUrl}}/api/v1/trading/stop
+# Content-Type: application/json
+# 
+# {
+#   "bot_id": "1b6f580e-908b-42eb-be78-9b982b91e192"
+# }
+
+### ========================================
+### 📊 BACKTESTING E OTIMIZAÇÃO  
+### ========================================
+
+###
+### 6. Backtest com dados históricos reais
+POST {{baseUrl}}/api/v1/trading/backtest
+Content-Type: application/json
+
+{
+  "strategy_name": "MovingAverage",
+  "symbol": "SOLBRL",
+  "initial_capital": 5000.0,
+  "trade_amount": 1000.0,
+  "currency": "BRL",
+  "start_date": "2024-06-01T00:00:00Z",
+  "end_date": "2024-06-30T23:59:59Z",
+  "trading_fees": 0.01,
+  "minimum_profit_threshold": 5.0,
+  "use_binance_data": true,
+  "interval": "30m"
+}
+
+###
+### 7. Backtest com configuração conservadora
+POST {{baseUrl}}/api/v1/trading/backtest
+Content-Type: application/json
+
+{
+  "strategy_name": "MovingAverage",
+  "symbol": "BTCBRL",
+  "initial_capital": 3000.0,
+  "trade_amount": 1000.0,
+  "currency": "BRL",
+  "start_date": "2024-05-01T00:00:00Z",
+  "end_date": "2024-05-31T23:59:59Z",
+  "trading_fees": 0.001,
+  "minimum_profit_threshold": 2.5,
+  "use_binance_data": true,
+  "interval": "30m"
+}
+
+### ========================================
+### ⚠️ TESTES DE VALIDAÇÃO E ERROS
+### ========================================
+
+###
+### 8. Teste de validação - Symbol inválido (deve retornar erro)
+POST {{baseUrl}}/api/v1/trading/create_trading_bot
+Content-Type: application/json
+
+{
+  "symbol": "INVALID",
+  "quantity": 0.1,
+  "strategy": "MovingAverage",
+  "params": {
+    "FastWindow": 3,
+    "SlowWindow": 10
+  },
+  "interval_seconds": 1800,
+  "initial_capital": 5000.0,
+  "trade_amount": 5000.0,
+  "currency": "BRL",
+  "trading_fees": 0.01,
+  "minimum_profit_threshold": 5.0
+}
+
+###
+### 9. Teste de validação - Parâmetros inválidos (deve retornar erro)
+POST {{baseUrl}}/api/v1/trading/create_trading_bot
+Content-Type: application/json
+
+{
+  "symbol": "SOLBRL",
+  "quantity": -1,
+  "strategy": "MovingAverage",
+  "params": {
+    "FastWindow": 0,
+    "SlowWindow": -5
+  },
+  "interval_seconds": 1800,
+  "initial_capital": -1000.0,
+  "trade_amount": 0,
+  "currency": "BRL",
+  "trading_fees": 0.01,
+  "minimum_profit_threshold": -2.0
+}
+
+###
+### 10. Teste de bot inexistente (deve retornar erro)
+POST {{baseUrl}}/api/v1/trading/start
+Content-Type: application/json
+
+{
+  "bot_id": "00000000-0000-0000-0000-000000000000"
+}
