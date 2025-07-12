@@ -57,7 +57,7 @@ func NewStartTradingBotUseCaseWithServices(
 }
 
 type InputStartTradingBot struct {
-	TradingBotId string
+	TradingBotId string `json:"bot_id"`
 }
 
 func (uc *StartTradingBotUseCase) Execute(input InputStartTradingBot) error {
