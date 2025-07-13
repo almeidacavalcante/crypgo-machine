@@ -245,3 +245,77 @@ func (r *TradingBotRepositoryDatabase) GetAllTradingBots() ([]*entity.TradingBot
 	}
 	return bots, nil
 }
+
+func (r *TradingBotRepositoryDatabase) GetTradingBotsByStatus(status entity.Status) ([]*entity.TradingBot, error) {
+	query := `
+		SELECT id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, created_at
+		FROM trade_bots
+		WHERE status = $1
+	`
+	rows, err := r.db.Query(query, string(status))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var bots []*entity.TradingBot
+	for rows.Next() {
+		var (
+			botID                  string
+			symbol                 string
+			quantity               float64
+			strategyName           string
+			strategyParams         string
+			statusStr              string
+			isPositioned           bool
+			intervalSeconds        int
+			initialCapital         float64
+			tradeAmount            float64
+			currency               string
+			tradingFees            float64
+			minimumProfitThreshold float64
+			createdAt              time.Time
+		)
+		if err := rows.Scan(&botID, &symbol, &quantity, &strategyName, &strategyParams, &statusStr, &isPositioned, &intervalSeconds, &initialCapital, &tradeAmount, &currency, &tradingFees, &minimumProfitThreshold, &createdAt); err != nil {
+			return nil, err
+		}
+
+		strategy, err := r.buildStrategyFromParams(strategyName, strategyParams)
+		if err != nil {
+			return nil, err
+		}
+
+		symbolInstance, errSymbol := vo.NewSymbol(symbol)
+		if errSymbol != nil {
+			return nil, errSymbol
+		}
+
+		restoredId, errRestoredId := vo.RestoreEntityId(botID)
+		if errRestoredId != nil {
+			return nil, errRestoredId
+		}
+		
+		bot := entity.Restore(
+			restoredId,
+			symbolInstance,
+			quantity,
+			strategy,
+			entity.Status(statusStr),
+			isPositioned,
+			intervalSeconds,
+			initialCapital,
+			tradeAmount,
+			currency,
+			tradingFees,
+			minimumProfitThreshold,
+			createdAt,
+		)
+
+		bots = append(bots, bot)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return bots, nil
+}

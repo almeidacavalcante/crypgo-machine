@@ -62,3 +62,16 @@ func (r *TradeBotRepositoryInMemory) Update(bot *entity.TradingBot) error {
 	r.data[string(bot.Id.GetValue())] = bot
 	return nil
 }
+
+func (r *TradeBotRepositoryInMemory) GetTradingBotsByStatus(status entity.Status) ([]*entity.TradingBot, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var bots []*entity.TradingBot
+	for _, bot := range r.data {
+		if bot.GetStatus() == status {
+			bots = append(bots, bot)
+		}
+	}
+	return bots, nil
+}
