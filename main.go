@@ -77,8 +77,11 @@ func main() {
 	http.HandleFunc("/api/v1/trading/start", startTradingBotController.Handle)
 
 	// Auto-recovery: restart all running bots after server restart
+	fmt.Println("🔧 About to start auto-recovery...")
 	if err := recoverRunningBots(tradingBotRepository, startTradingBotUseCase); err != nil {
 		fmt.Printf("⚠️ Auto-recovery completed with some errors: %v\n", err)
+	} else {
+		fmt.Println("🔧 Auto-recovery finished successfully")
 	}
 
 	stopTradingBotUseCase := usecase.NewStopTradingBotUseCase(tradingBotRepository)
