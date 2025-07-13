@@ -8,4 +8,5 @@ type TradingBotRepository interface {
 	GetTradeByID(id string) (*entity.TradingBot, error)
 	Exists(id string) (bool, error)
 	GetAllTradingBots() ([]*entity.TradingBot, error)
+	GetTradingBotsByStatus(status entity.Status) ([]*entity.TradingBot, error)
 }

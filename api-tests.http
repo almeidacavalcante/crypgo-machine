@@ -89,9 +89,9 @@ Content-Type: application/json
 ### 5b. Exemplo: Parar bot específico usando ID de produção (descomente para usar)
 # POST {{baseUrl}}/api/v1/trading/stop
 # Content-Type: application/json
-# 
+#
 # {
-#   "bot_id": "1b6f580e-908b-42eb-be78-9b982b91e192"
+#   "bot_id": ""{{botIdSOLBRL}}
 # }
 
 ### ========================================

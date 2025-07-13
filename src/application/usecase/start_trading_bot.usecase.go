@@ -7,6 +7,7 @@ import (
 	"crypgo-machine/src/domain/entity"
 	"crypgo-machine/src/domain/vo"
 	"crypgo-machine/src/infra/external"
+	"crypgo-machine/src/infra/queue"
 	"fmt"
 	"github.com/adshao/go-binance/v2"
 	"strconv"
@@ -28,7 +29,28 @@ func NewStartTradingBotUseCase(
 ) *StartTradingBotUseCase {
 	// Create default live implementations for backward compatibility
 	dataSource := service.NewLiveMarketDataSource(client)
-	executionContext := service.NewLiveTradingExecutionContext(client, tradingBotRepo, decisionLogRepo)
+	executionContext := service.NewLiveTradingExecutionContext(client, tradingBotRepo, decisionLogRepo, nil, "")
+	
+	return &StartTradingBotUseCase{
+		tradingBotRepository:         tradingBotRepo,
+		tradingDecisionLogRepository: decisionLogRepo,
+		client:                       client,
+		dataSource:                   dataSource,
+		executionContext:             executionContext,
+	}
+}
+
+// NewStartTradingBotUseCaseWithMessaging creates a new StartTradingBotUseCase with message broker for notifications
+func NewStartTradingBotUseCaseWithMessaging(
+	tradingBotRepo repository.TradingBotRepository,
+	decisionLogRepo repository.TradingDecisionLogRepository,
+	client external.BinanceClientInterface,
+	messageBroker queue.MessageBroker,
+	exchangeName string,
+) *StartTradingBotUseCase {
+	// Create live implementations with messaging support
+	dataSource := service.NewLiveMarketDataSource(client)
+	executionContext := service.NewLiveTradingExecutionContext(client, tradingBotRepo, decisionLogRepo, messageBroker, exchangeName)
 	
 	return &StartTradingBotUseCase{
 		tradingBotRepository:         tradingBotRepo,
@@ -147,8 +169,34 @@ func (uc *StartTradingBotUseCase) ExecuteAnalysisAndTrade(tradingBot *entity.Tra
 		fmt.Printf("⚠️ Failed to save decision log: %v\n", err)
 	}
 
-	fmt.Printf("🤖 Strategy %s for bot %s decided: %s (analysis: %+v)\n",
-		strategy.GetName(), tradingBot.Id.GetValue(), analysisResult.Decision, analysisResult.AnalysisData)
+	// Format analysis data in a more readable way
+	var analysisStr string
+	symbol := tradingBot.GetSymbol().GetValue()
+	
+	if reason, exists := analysisResult.AnalysisData["reason"]; exists {
+		analysisStr = fmt.Sprintf("reason: %v", reason)
+		
+		// Add key metrics if available
+		if currentPrice, exists := analysisResult.AnalysisData["currentPrice"]; exists {
+			analysisStr += fmt.Sprintf(", price: %.2f", currentPrice)
+		}
+		if fast, exists := analysisResult.AnalysisData["fast"]; exists {
+			if slow, exists := analysisResult.AnalysisData["slow"]; exists {
+				analysisStr += fmt.Sprintf(", MA(%.1f/%.1f)", fast, slow)
+			}
+		}
+		if spread, exists := analysisResult.AnalysisData["actualSpread"]; exists {
+			analysisStr += fmt.Sprintf(", spread: %.2f%%", spread)
+		}
+		if minSpread, exists := analysisResult.AnalysisData["minimumSpread"]; exists {
+			analysisStr += fmt.Sprintf(" (min: %.1f%%)", minSpread)
+		}
+	} else {
+		analysisStr = fmt.Sprintf("%+v", analysisResult.AnalysisData)
+	}
+	
+	fmt.Printf("🤖 [%s] %s → %s (%s)\n",
+		symbol, strategy.GetName(), analysisResult.Decision, analysisStr)
 
 	// Execute trading decision using abstraction
 	if err := uc.executionContext.ExecuteTrade(analysisResult.Decision, tradingBot, currentPrice, currentTime); err != nil {

@@ -5,6 +5,8 @@ import (
 	"crypgo-machine/src/application/repository"
 	"crypgo-machine/src/domain/entity"
 	"crypgo-machine/src/infra/external"
+	"crypgo-machine/src/infra/queue"
+	"encoding/json"
 	"fmt"
 	"github.com/adshao/go-binance/v2"
 	"strconv"
@@ -16,6 +18,8 @@ type LiveTradingExecutionContext struct {
 	client                       external.BinanceClientInterface
 	tradingBotRepository         repository.TradingBotRepository
 	tradingDecisionLogRepository repository.TradingDecisionLogRepository
+	messageBroker                queue.MessageBroker
+	exchangeName                 string
 	shouldContinue               bool
 }
 
@@ -24,11 +28,15 @@ func NewLiveTradingExecutionContext(
 	client external.BinanceClientInterface,
 	tradingBotRepo repository.TradingBotRepository,
 	decisionLogRepo repository.TradingDecisionLogRepository,
+	messageBroker queue.MessageBroker,
+	exchangeName string,
 ) *LiveTradingExecutionContext {
 	return &LiveTradingExecutionContext{
 		client:                       client,
 		tradingBotRepository:         tradingBotRepo,
 		tradingDecisionLogRepository: decisionLogRepo,
+		messageBroker:                messageBroker,
+		exchangeName:                 exchangeName,
 		shouldContinue:               true,
 	}
 }
@@ -43,13 +51,13 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 		if bot.GetIsPositioned() {
 			return fmt.Errorf("this trading bot already has an open position")
 		}
-		fmt.Printf("🟢 Executing BUY order for %s, quantity: %.6f\n", symbol, quantity)
+		fmt.Printf("🟢 [%s] BUY order (qty: %.6f, price: %.2f)\n", symbol, quantity, currentPrice)
 
 		isOrderPlaced := ctx.placeBuyOrder(symbol, quantity)
 		if isOrderPlaced {
 			// Set entry price when entering position
 			bot.SetEntryPrice(currentPrice)
-			fmt.Printf("📈 Entry price set to: %.2f for bot %s\n", currentPrice, bot.Id.GetValue())
+			fmt.Printf("📈 [%s] Position opened at %.2f\n", symbol, currentPrice)
 
 			errPosition := bot.GetIntoPosition()
 			if errPosition != nil {
@@ -58,6 +66,11 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			errUpdate := ctx.tradingBotRepository.Update(bot)
 			if errUpdate != nil {
 				return errUpdate
+			}
+
+			// Emit buy event
+			if err := ctx.emitTradingEvent("trading.buy_executed", bot, currentPrice, quantity, 0, 0, timestamp); err != nil {
+				fmt.Printf("⚠️ Failed to emit buy event: %v\n", err)
 			}
 		}
 		return nil
@@ -68,13 +81,15 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 		}
 
 		actualProfit := ((currentPrice - bot.GetEntryPrice()) / bot.GetEntryPrice()) * 100
-		fmt.Printf("🔴 Executing SELL order for %s, quantity: %.6f (Profit: %.2f%%)\n", symbol, quantity, actualProfit)
+		fmt.Printf("🔴 [%s] SELL order (qty: %.6f, profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
+			symbol, quantity, actualProfit, bot.GetEntryPrice(), currentPrice)
 
 		isOrderPlaced := ctx.placeSellOrder(symbol, quantity)
 		if isOrderPlaced {
 			// Clear entry price when exiting position
+			entryPrice := bot.GetEntryPrice()
 			bot.ClearEntryPrice()
-			fmt.Printf("📉 Entry price cleared for bot %s after profitable sale\n", bot.Id.GetValue())
+			fmt.Printf("📉 [%s] Position closed\n", symbol)
 
 			errPosition := bot.GetOutOfPosition()
 			if errPosition != nil {
@@ -84,15 +99,26 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			if errUpdate != nil {
 				return errUpdate
 			}
+
+			// Emit sell event
+			if err := ctx.emitTradingEvent("trading.sell_executed", bot, currentPrice, quantity, entryPrice, actualProfit, timestamp); err != nil {
+				fmt.Printf("⚠️ Failed to emit sell event: %v\n", err)
+			}
 		}
 		return nil
 
 	case entity.Hold:
 		if bot.GetIsPositioned() {
-			potentialProfit := ((currentPrice - bot.GetEntryPrice()) / bot.GetEntryPrice()) * 100
-			fmt.Printf("⏸ HOLDING position for %s (Current potential profit: %.2f%%)\n", symbol, potentialProfit)
+			entryPrice := bot.GetEntryPrice()
+			if entryPrice > 0 {
+				potentialProfit := ((currentPrice - entryPrice) / entryPrice) * 100
+				fmt.Printf("⏸ [%s] HOLDING position (profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
+					symbol, potentialProfit, entryPrice, currentPrice)
+			} else {
+				fmt.Printf("⏸ [%s] HOLDING position (entry price unavailable)\n", symbol)
+			}
 		} else {
-			fmt.Printf("⏸ HOLDING (no position) for %s\n", symbol)
+			fmt.Printf("⏸ [%s] HOLDING (no position)\n", symbol)
 		}
 	}
 
@@ -156,4 +182,53 @@ func (ctx *LiveTradingExecutionContext) placeSellOrder(symbol string, quantity f
 
 	fmt.Printf("✅ Sell order placed: %+v\n", order)
 	return true
+}
+
+// emitTradingEvent emits trading events to the message broker
+func (ctx *LiveTradingExecutionContext) emitTradingEvent(
+	eventType string,
+	bot *entity.TradingBot,
+	price float64,
+	quantity float64,
+	entryPrice float64,
+	profitLoss float64,
+	timestamp time.Time,
+) error {
+	totalValue := price * quantity
+	
+	payload := map[string]interface{}{
+		"bot_id":           bot.Id.GetValue(),
+		"symbol":           bot.GetSymbol().GetValue(),
+		"action":           eventType[8:], // Remove "trading." prefix to get "buy_executed" or "sell_executed"
+		"price":            price,
+		"quantity":         quantity,
+		"total_value":      totalValue,
+		"strategy":         bot.GetStrategy().GetName(),
+		"timestamp":        timestamp,
+		"trading_fees":     bot.GetTradingFees(),
+		"currency":         bot.GetCurrency(),
+	}
+
+	// Add extra fields for sell events
+	if eventType == "trading.sell_executed" {
+		payload["entry_price"] = entryPrice
+		payload["profit_loss"] = (price - entryPrice) * quantity
+		payload["profit_loss_perc"] = profitLoss
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal trading event payload: %v", err)
+	}
+
+	message := queue.Message{
+		RoutingKey: eventType,
+		Payload:    payloadBytes,
+		Headers:    map[string]string{
+			"timestamp": timestamp.Format(time.RFC3339),
+			"bot_id":    bot.Id.GetValue(),
+		},
+	}
+
+	return ctx.messageBroker.Publish(ctx.exchangeName, message)
 }
