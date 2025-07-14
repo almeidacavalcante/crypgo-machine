@@ -38,3 +38,11 @@ Thumbs.db
 # dotenv / secrets
 .env
 .env.*
+
+# Build artifacts and executables
+*.tar.gz
+main
+
+# Test and optimization results
+optimization_results/
+scripts/optimization_results/

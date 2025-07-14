@@ -1,6 +1,0 @@
-# OTIMIZAÇÃO DE PARÂMETROS - RESULTADOS
-## Período: 2024-05-01 a 2024-06-30
-## Capital inicial: 5000 BRL
-
-Symbol   Fast Slow MinProfit MinSpread Amount   ROI%     Trades   WinRate% MaxDD%   Filename    
-=================================================================================================
