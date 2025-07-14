@@ -27,23 +27,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup SSH Key
-      uses: webfactory/ssh-agent@v0.9.0
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-    - name: Add SSH known hosts
+    - name: Setup SSH
       run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+        # Test the key format
+        ssh-keygen -l -f ~/.ssh/id_rsa
 
     - name: Test SSH Connection
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo 'SSH connection successful'"
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo 'SSH connection successful'"
 
     - name: Create Backup (if not skipped)
       if: github.event.inputs.skip_backup != 'true'
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           cd ${{ env.DEPLOYMENT_PATH }}
           
           # Create backup directory with timestamp
@@ -70,7 +70,7 @@ jobs:
 
     - name: Deploy Application
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           cd ${{ env.DEPLOYMENT_PATH }}
           
           echo "Starting deployment process..."
@@ -96,7 +96,7 @@ jobs:
 
     - name: Run Database Migrations
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           cd ${{ env.DEPLOYMENT_PATH }}
           
           echo "Checking and running database migrations..."
@@ -112,7 +112,7 @@ jobs:
     - name: Health Check
       id: health_check
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           cd ${{ env.DEPLOYMENT_PATH }}
           
           echo "Performing health checks..."
@@ -159,7 +159,7 @@ jobs:
     - name: Rollback on Failure
       if: failure() && steps.health_check.outcome == 'failure'
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           cd ${{ env.DEPLOYMENT_PATH }}
           
           echo "DEPLOYMENT FAILED - Starting rollback process..."
@@ -202,7 +202,7 @@ jobs:
     - name: Cleanup and Optimization
       if: success()
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           cd ${{ env.DEPLOYMENT_PATH }}
           
           echo "Performing post-deployment cleanup..."
@@ -238,7 +238,7 @@ jobs:
     - name: Post-deployment Security Check
       if: success()
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           cd ${{ env.DEPLOYMENT_PATH }}
           
           echo "Running post-deployment security checks..."
