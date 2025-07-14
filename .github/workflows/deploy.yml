@@ -36,9 +36,26 @@ jobs:
         # Test the key format
         ssh-keygen -l -f ~/.ssh/id_rsa
 
-    - name: Test SSH Connection
+    - name: Test SSH Connection and Setup
       run: |
-        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo 'SSH connection successful'"
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          echo 'SSH connection successful'
+          
+          # Create deployment directory if it doesn't exist
+          if [ ! -d "${{ env.DEPLOYMENT_PATH }}" ]; then
+            echo "Creating deployment directory..."
+            mkdir -p ${{ env.DEPLOYMENT_PATH }}
+            cd ${{ env.DEPLOYMENT_PATH }}
+            git clone https://github.com/almeidacavalcante/crypgo-machine.git .
+          else
+            echo "Deployment directory exists"
+          fi
+          
+          # Create backup directory
+          mkdir -p /opt/backups
+          
+          echo "Setup completed"
+        EOF
 
     - name: Create Backup (if not skipped)
       if: github.event.inputs.skip_backup != 'true'
@@ -52,8 +69,9 @@ jobs:
           
           echo "Creating backup at $BACKUP_DIR..."
           
-          # Backup database
-          docker-compose -f docker-compose.full.yml exec -T postgres pg_dump -U crypgo_prod crypgo_machine > $BACKUP_DIR/database_backup.sql
+          # Try to backup database (skip if fails)
+          echo "Attempting database backup..."
+          docker-compose -f docker-compose.full.yml exec -T postgres pg_dump -U crypgo_prod crypgo_machine > $BACKUP_DIR/database_backup.sql 2>/dev/null || echo "Database backup skipped (database may not exist yet)"
           
           # Backup application files
           tar -czf $BACKUP_DIR/app_backup.tar.gz --exclude='*.log' --exclude='optimization_results' .
