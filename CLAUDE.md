@@ -150,6 +150,52 @@ Required environment variables:
 - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: PostgreSQL connection
 - `RABBIT_MQ_URL`: RabbitMQ connection string
 
+## Security Implementation
+
+### IP Whitelisting and Rate Limiting (nginx.conf)
+The application implements comprehensive security measures to protect against automated attacks and unauthorized access:
+
+#### IP Whitelisting
+- **Geo-based IP filtering**: Uses nginx `geo` module to define allowed IPs
+- **API Protection**: `/api/` and `/health` endpoints restricted to whitelisted IPs only
+- **Automatic blocking**: Non-whitelisted IPs receive 403 Forbidden with JSON error message
+- **Localhost access**: Includes `127.0.0.1` and `::1` for local development
+
+#### Attack Pattern Prevention
+- **Sensitive files**: Blocks access to `.env`, `.git`, `.htaccess`, etc.
+- **Script execution**: Prevents access to `.php`, `.asp`, `.jsp`, `.cgi` files
+- **Common attack paths**: Blocks `/wp-admin`, `/phpmyadmin`, `/admin` patterns
+- **Returns 404**: All blocked resources return 404 (not 403) to avoid information disclosure
+
+#### Rate Limiting
+- **API endpoints**: 10 requests/second with burst capacity of 20
+- **General requests**: 5 requests/second with burst capacity of 10
+- **Protection against**: DDoS attacks, brute force attempts, resource exhaustion
+
+#### Security Headers
+- `X-Frame-Options: SAMEORIGIN` - Prevents clickjacking
+- `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
+- `X-XSS-Protection: 1; mode=block` - Enables XSS filtering
+- `X-Robots-Tag: noindex, nofollow` - Prevents search engine indexing
+
+#### Emergency Access
+To temporarily disable IP restrictions (for emergency access):
+1. SSH to server: `ssh root@31.97.249.4`
+2. Comment out the `if ($allowed_ip = 0)` blocks in nginx.conf
+3. Reload nginx: `docker-compose -f docker-compose.full.yml exec nginx nginx -s reload`
+
+#### Adding New IPs
+To whitelist additional IP addresses, modify the `geo $allowed_ip` block in nginx.conf:
+```nginx
+geo $allowed_ip {
+    default 0;
+    177.181.176.178 1;  # Current authorized IP
+    NEW.IP.ADD.RESS 1;  # Add new IP here
+    127.0.0.1 1;        # Localhost
+    ::1 1;              # IPv6 localhost
+}
+```
+
 ## Known Issues and Patterns
 
 ### Test Compilation Issues
