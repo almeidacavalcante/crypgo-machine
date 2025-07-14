@@ -93,23 +93,40 @@ jobs:
           
           echo "Starting deployment process..."
           
+          # Check if application is already running
+          CURRENT_STATUS=$(docker-compose -f docker-compose.full.yml ps --services --filter "status=running" | wc -l)
+          echo "Currently running services: $CURRENT_STATUS"
+          
           # Pull latest changes
           git fetch origin
           git reset --hard origin/main
           
+          # Copy production environment if it doesn't exist
+          if [ ! -f .env.production ]; then
+            echo "Creating .env.production file..."
+            cp .env.production.example .env.production 2>/dev/null || echo "Warning: .env.production.example not found"
+          fi
+          
           echo "Building new Docker image..."
           
           # Build new image
-          docker-compose -f docker-compose.full.yml build --no-cache crypgo-app
+          docker-compose -f docker-compose.full.yml build crypgo-app
           
           echo "Updating services with zero-downtime deployment..."
           
-          # Update containers with minimal downtime
-          docker-compose -f docker-compose.full.yml up -d --force-recreate crypgo-app
+          if [ $CURRENT_STATUS -gt 0 ]; then
+            echo "Application is running, performing rolling update..."
+            # Rolling update for running application
+            docker-compose -f docker-compose.full.yml up -d --no-deps crypgo-app
+          else
+            echo "First deployment, starting all services..."
+            # First deployment - start all services
+            docker-compose -f docker-compose.full.yml up -d
+          fi
           
           # Wait for application to be ready
           echo "Waiting for application to start..."
-          sleep 10
+          sleep 15
         EOF
 
     - name: Run Database Migrations
@@ -117,14 +134,57 @@ jobs:
         ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           cd ${{ env.DEPLOYMENT_PATH }}
           
-          echo "Checking and running database migrations..."
+          echo "Checking database and running migrations..."
           
-          # Run migrations in order (idempotent)
-          docker-compose -f docker-compose.full.yml exec -T postgres psql -U crypgo_prod -d crypgo_machine -f /docker-entrypoint-initdb.d/001_create_trade_bots_table.sql 2>/dev/null || echo "Migration 001 already applied or failed"
-          docker-compose -f docker-compose.full.yml exec -T postgres psql -U crypgo_prod -d crypgo_machine -f /docker-entrypoint-initdb.d/002_add_strategy_params_column.sql 2>/dev/null || echo "Migration 002 already applied or failed"
-          docker-compose -f docker-compose.full.yml exec -T postgres psql -U crypgo_prod -d crypgo_machine -f /docker-entrypoint-initdb.d/003_create_trading_decision_logs_table.sql 2>/dev/null || echo "Migration 003 already applied or failed"
+          # Wait for database to be ready
+          echo "Waiting for database to be ready..."
+          for i in {1..30}; do
+            if docker-compose -f docker-compose.full.yml exec -T postgres pg_isready -U crypgo_prod; then
+              echo "Database is ready"
+              break
+            fi
+            echo "Waiting for database... ($i/30)"
+            sleep 2
+          done
           
-          echo "Database migrations completed"
+          # Create database if it doesn't exist
+          DB_NAME=$(grep '^DB_NAME=' .env.production | cut -d '=' -f2)
+          DB_USER=$(grep '^DB_USER=' .env.production | cut -d '=' -f2)
+          
+          echo "Ensuring database '$DB_NAME' exists..."
+          docker-compose -f docker-compose.full.yml exec -T postgres psql -U $DB_USER -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1 || \
+          docker-compose -f docker-compose.full.yml exec -T postgres createdb -U $DB_USER $DB_NAME
+          
+          # Check which migrations need to be run
+          echo "Checking existing tables..."
+          TABLES=$(docker-compose -f docker-compose.full.yml exec -T postgres psql -U $DB_USER -d $DB_NAME -t -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public';" 2>/dev/null | tr -d ' ')
+          
+          # Run migrations only if needed
+          if ! echo "$TABLES" | grep -q "trade_bots"; then
+            echo "Running migration 001: create_trade_bots_table.sql"
+            docker-compose -f docker-compose.full.yml exec -T postgres psql -U $DB_USER -d $DB_NAME -f /docker-entrypoint-initdb.d/001_create_trade_bots_table.sql
+          else
+            echo "Migration 001 already applied (trade_bots table exists)"
+          fi
+          
+          # Check if strategy_params column exists
+          STRATEGY_COLUMN=$(docker-compose -f docker-compose.full.yml exec -T postgres psql -U $DB_USER -d $DB_NAME -t -c "SELECT column_name FROM information_schema.columns WHERE table_name = 'trade_bots' AND column_name = 'strategy_params';" 2>/dev/null | tr -d ' ')
+          if [ -z "$STRATEGY_COLUMN" ]; then
+            echo "Running migration 002: add_strategy_params_column.sql"
+            docker-compose -f docker-compose.full.yml exec -T postgres psql -U $DB_USER -d $DB_NAME -f /docker-entrypoint-initdb.d/002_add_strategy_params_column.sql
+          else
+            echo "Migration 002 already applied (strategy_params column exists)"
+          fi
+          
+          # Check if trading_decision_logs table exists
+          if ! echo "$TABLES" | grep -q "trading_decision_logs"; then
+            echo "Running migration 003: create_trading_decision_logs_table.sql"
+            docker-compose -f docker-compose.full.yml exec -T postgres psql -U $DB_USER -d $DB_NAME -f /docker-entrypoint-initdb.d/003_create_trading_decision_logs_table.sql
+          else
+            echo "Migration 003 already applied (trading_decision_logs table exists)"
+          fi
+          
+          echo "Database migrations completed successfully"
         EOF
 
     - name: Health Check
