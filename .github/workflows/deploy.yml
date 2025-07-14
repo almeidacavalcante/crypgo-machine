@@ -222,11 +222,15 @@ jobs:
           done
           
           # Test API functionality
-          API_RESPONSE=$(curl -s http://localhost/api/v1/trading/list)
-          if echo "$API_RESPONSE" | grep -q "trading_bots\|error"; then
-            echo "API functionality test passed"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/v1/trading/list)
+          
+          echo "API Response HTTP Code: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ API functionality test passed - HTTP 200 OK"
           else
-            echo "ERROR: API functionality test failed"
+            echo "❌ ERROR: API functionality test failed - HTTP $HTTP_CODE"
+            API_RESPONSE=$(curl -s http://localhost/api/v1/trading/list)
             echo "Response: $API_RESPONSE"
             exit 1
           fi
