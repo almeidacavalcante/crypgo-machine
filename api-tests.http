@@ -4,7 +4,7 @@
 ### 📖 INSTRUÇÕES DE USO:
 ### 1. Para testar em LOCALHOST: mantenha @baseUrl = http://localhost:8080  
 ### 2. Para testar em PRODUÇÃO: descomente # @baseUrl = http://31.97.249.4
-### 3. Após criar bots, copie os IDs e substitua as variáveis @botIdSOLBRL/@botIdBTCBRL
+### 3. Após criar bots, copie os IDs e substitua as variáveis @BOT/@botIdBTCBRL
 ### 4. Use Ctrl+Alt+R no GoLand para executar requests rapidamente
 
 ### 🔧 CONFIGURAÇÃO DE AMBIENTE
@@ -14,7 +14,7 @@
 
 ### 📊 VARIÁVEIS ÚTEIS PARA TESTES
 ### Substitua pelos IDs reais dos bots após criá-los:
-@botIdSOLBRL = 635165ac-240c-4b07-8172-97750c14e8d1
+@BOT = 23ff5375-bd10-4c71-8964-eb73e9a7de1d
 
 ### 🏭 IDs DOS BOTS EM PRODUÇÃO (para referência):
 ### @botIdProdSOL1 = 1b6f580e-908b-42eb-be78-9b982b91e192
@@ -82,17 +82,17 @@ POST {{baseUrl}}/api/v1/trading/start
 Content-Type: application/json
 
 {
-  "bot_id": "{{botIdSOLBRL}}"
+  "bot_id": "{{BOT}}"
 }
 
 ###
 ### 5b. Exemplo: Parar bot específico usando ID de produção (descomente para usar)
-# POST {{baseUrl}}/api/v1/trading/stop
-# Content-Type: application/json
-#
-# {
-#   "bot_id": ""{{botIdSOLBRL}}
-# }
+ POST {{baseUrl}}/api/v1/trading/stop
+ Content-Type: application/json
+
+ {
+   "bot_id": "{{BOT}}"
+ }
 
 ### ========================================
 ### 📊 BACKTESTING E OTIMIZAÇÃO  

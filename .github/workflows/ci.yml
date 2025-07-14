@@ -1,0 +1,217 @@
+name: CI - Continuous Integration
+
+on:
+  push:
+    branches: [ main, develop, security/ip-whitelisting ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GO_VERSION: '1.23'
+
+jobs:
+  test:
+    name: Tests and Quality Checks
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: crypgo_test
+          POSTGRES_PASSWORD: test123
+          POSTGRES_DB: crypgo_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      rabbitmq:
+        image: rabbitmq:3-management
+        env:
+          RABBITMQ_DEFAULT_USER: test
+          RABBITMQ_DEFAULT_PASS: test123
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 3
+        ports:
+          - 5672:5672
+          - 15672:15672
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Create test environment file
+      run: |
+        cat > .env.test << EOF
+        # Test Database Configuration
+        DB_HOST=localhost
+        DB_PORT=5432
+        DB_USER=crypgo_test
+        DB_PASSWORD=test123
+        DB_NAME=crypgo_test
+        
+        # Test Binance API (fake values for testing)
+        BINANCE_API_KEY=test_api_key
+        BINANCE_SECRET_KEY=test_secret_key
+        
+        # Test RabbitMQ
+        RABBIT_MQ_URL=amqp://test:test123@localhost:5672/
+        
+        # Application
+        GO_ENV=test
+        EOF
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify dependencies
+      run: go mod verify
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+    - name: Run staticcheck
+      run: staticcheck ./...
+
+    - name: Install gosec
+      run: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+
+    - name: Run gosec security scan
+      run: gosec ./...
+
+    - name: Run tests with coverage
+      run: |
+        go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        go tool cover -html=coverage.out -o coverage.html
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.out
+        fail_ci_if_error: false
+
+    - name: Test database migrations
+      run: |
+        # Test if migrations run without errors
+        export $(cat .env.test | xargs)
+        psql -h localhost -U crypgo_test -d crypgo_test -f src/infra/database/migrations/001_create_trade_bots_table.sql
+        psql -h localhost -U crypgo_test -d crypgo_test -f src/infra/database/migrations/002_add_strategy_params_column.sql
+        psql -h localhost -U crypgo_test -d crypgo_test -f src/infra/database/migrations/003_create_trading_decision_logs_table.sql
+
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Build application
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o crypgo-machine .
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: crypgo-machine-binary
+        path: crypgo-machine
+        retention-days: 30
+
+  docker:
+    name: Build and Test Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: false
+        tags: crypgo-machine:ci-test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test Docker image
+      run: |
+        # Start containers for basic functionality test
+        docker run --name crypgo-test -d crypgo-machine:ci-test
+        sleep 5
+        # Check if container is running
+        docker ps | grep crypgo-test
+        # Cleanup
+        docker stop crypgo-test
+        docker rm crypgo-test
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Check for high/critical vulnerabilities
+      run: |
+        trivy fs --exit-code 1 --severity HIGH,CRITICAL .

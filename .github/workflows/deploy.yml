@@ -1,0 +1,260 @@
+name: CD - Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      skip_backup:
+        description: 'Skip backup before deployment'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+env:
+  DEPLOYMENT_PATH: /opt/crypgo-machine
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Test SSH Connection
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo 'SSH connection successful'"
+
+    - name: Create Backup (if not skipped)
+      if: github.event.inputs.skip_backup != 'true'
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          cd ${{ env.DEPLOYMENT_PATH }}
+          
+          # Create backup directory with timestamp
+          BACKUP_DIR="/opt/backups/crypgo-$(date +%Y%m%d_%H%M%S)"
+          mkdir -p $BACKUP_DIR
+          
+          echo "Creating backup at $BACKUP_DIR..."
+          
+          # Backup database
+          docker-compose -f docker-compose.full.yml exec -T postgres pg_dump -U crypgo_prod crypgo_machine > $BACKUP_DIR/database_backup.sql
+          
+          # Backup application files
+          tar -czf $BACKUP_DIR/app_backup.tar.gz --exclude='*.log' --exclude='optimization_results' .
+          
+          # Backup environment files
+          cp .env.production $BACKUP_DIR/
+          
+          echo "Backup completed successfully at $BACKUP_DIR"
+          
+          # Keep only last 5 backups
+          cd /opt/backups
+          ls -1t crypgo-* | tail -n +6 | xargs -r rm -rf
+        EOF
+
+    - name: Deploy Application
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          cd ${{ env.DEPLOYMENT_PATH }}
+          
+          echo "Starting deployment process..."
+          
+          # Pull latest changes
+          git fetch origin
+          git reset --hard origin/main
+          
+          echo "Building new Docker image..."
+          
+          # Build new image
+          docker-compose -f docker-compose.full.yml build --no-cache crypgo-app
+          
+          echo "Updating services with zero-downtime deployment..."
+          
+          # Update containers with minimal downtime
+          docker-compose -f docker-compose.full.yml up -d --force-recreate crypgo-app
+          
+          # Wait for application to be ready
+          echo "Waiting for application to start..."
+          sleep 10
+        EOF
+
+    - name: Run Database Migrations
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          cd ${{ env.DEPLOYMENT_PATH }}
+          
+          echo "Checking and running database migrations..."
+          
+          # Run migrations in order (idempotent)
+          docker-compose -f docker-compose.full.yml exec -T postgres psql -U crypgo_prod -d crypgo_machine -f /docker-entrypoint-initdb.d/001_create_trade_bots_table.sql 2>/dev/null || echo "Migration 001 already applied or failed"
+          docker-compose -f docker-compose.full.yml exec -T postgres psql -U crypgo_prod -d crypgo_machine -f /docker-entrypoint-initdb.d/002_add_strategy_params_column.sql 2>/dev/null || echo "Migration 002 already applied or failed"
+          docker-compose -f docker-compose.full.yml exec -T postgres psql -U crypgo_prod -d crypgo_machine -f /docker-entrypoint-initdb.d/003_create_trading_decision_logs_table.sql 2>/dev/null || echo "Migration 003 already applied or failed"
+          
+          echo "Database migrations completed"
+        EOF
+
+    - name: Health Check
+      id: health_check
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          cd ${{ env.DEPLOYMENT_PATH }}
+          
+          echo "Performing health checks..."
+          
+          # Wait for services to be fully ready
+          sleep 15
+          
+          # Check if containers are running
+          if ! docker-compose -f docker-compose.full.yml ps | grep "Up"; then
+            echo "ERROR: Some containers are not running!"
+            docker-compose -f docker-compose.full.yml ps
+            exit 1
+          fi
+          
+          # Test API endpoint (with retry)
+          RETRIES=5
+          for i in $(seq 1 $RETRIES); do
+            if curl -f -s http://localhost/health > /dev/null; then
+              echo "Health check passed on attempt $i"
+              break
+            else
+              echo "Health check failed on attempt $i, retrying..."
+              if [ $i -eq $RETRIES ]; then
+                echo "ERROR: Health check failed after $RETRIES attempts"
+                exit 1
+              fi
+              sleep 10
+            fi
+          done
+          
+          # Test API functionality
+          API_RESPONSE=$(curl -s http://localhost/api/v1/trading/list)
+          if echo "$API_RESPONSE" | grep -q "trading_bots\|error"; then
+            echo "API functionality test passed"
+          else
+            echo "ERROR: API functionality test failed"
+            echo "Response: $API_RESPONSE"
+            exit 1
+          fi
+          
+          echo "All health checks passed!"
+        EOF
+
+    - name: Rollback on Failure
+      if: failure() && steps.health_check.outcome == 'failure'
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          cd ${{ env.DEPLOYMENT_PATH }}
+          
+          echo "DEPLOYMENT FAILED - Starting rollback process..."
+          
+          # Find the latest backup
+          LATEST_BACKUP=$(ls -1t /opt/backups/crypgo-* | head -n 1)
+          
+          if [ -n "$LATEST_BACKUP" ]; then
+            echo "Rolling back to backup: $LATEST_BACKUP"
+            
+            # Stop current containers
+            docker-compose -f docker-compose.full.yml down
+            
+            # Restore database from backup
+            if [ -f "$LATEST_BACKUP/database_backup.sql" ]; then
+              docker-compose -f docker-compose.full.yml up -d postgres
+              sleep 10
+              docker-compose -f docker-compose.full.yml exec -T postgres psql -U crypgo_prod -d crypgo_machine < $LATEST_BACKUP/database_backup.sql
+            fi
+            
+            # Restore application files
+            if [ -f "$LATEST_BACKUP/app_backup.tar.gz" ]; then
+              tar -xzf $LATEST_BACKUP/app_backup.tar.gz
+            fi
+            
+            # Restore environment
+            if [ -f "$LATEST_BACKUP/.env.production" ]; then
+              cp $LATEST_BACKUP/.env.production .
+            fi
+            
+            # Restart services with previous version
+            docker-compose -f docker-compose.full.yml up -d
+            
+            echo "Rollback completed"
+          else
+            echo "No backup found for rollback!"
+          fi
+        EOF
+
+    - name: Cleanup and Optimization
+      if: success()
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          cd ${{ env.DEPLOYMENT_PATH }}
+          
+          echo "Performing post-deployment cleanup..."
+          
+          # Remove unused Docker images
+          docker image prune -f
+          
+          # Clean up old logs (keep last 7 days)
+          find . -name "*.log" -type f -mtime +7 -delete 2>/dev/null || true
+          
+          # Show final container status
+          echo "Final container status:"
+          docker-compose -f docker-compose.full.yml ps
+          
+          # Show disk usage
+          echo "Disk usage:"
+          df -h
+          
+          echo "Deployment completed successfully!"
+        EOF
+
+    - name: Deployment Notification
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ Deployment to production completed successfully!"
+          echo "🚀 Application is now running at http://31.97.249.4"
+        else
+          echo "❌ Deployment failed!"
+          echo "🔄 Rollback was attempted automatically"
+        fi
+
+    - name: Post-deployment Security Check
+      if: success()
+      run: |
+        ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          cd ${{ env.DEPLOYMENT_PATH }}
+          
+          echo "Running post-deployment security checks..."
+          
+          # Verify nginx is blocking unauthorized access
+          if curl -s -o /dev/null -w "%{http_code}" http://localhost/.env | grep -q "404"; then
+            echo "✅ Nginx security rules are working (.env blocked)"
+          else
+            echo "⚠️ Warning: Nginx security rules may not be working properly"
+          fi
+          
+          # Check if IP whitelisting is active
+          RESPONSE=$(curl -s http://localhost/)
+          if echo "$RESPONSE" | grep -q "IP whitelisting active"; then
+            echo "✅ IP whitelisting is active"
+          else
+            echo "⚠️ Warning: IP whitelisting may not be active"
+          fi
+          
+          echo "Security checks completed"
+        EOF

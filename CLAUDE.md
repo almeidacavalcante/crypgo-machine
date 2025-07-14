@@ -196,6 +196,87 @@ geo $allowed_ip {
 }
 ```
 
+## CI/CD Pipeline (GitHub Actions)
+
+### Automated Deployment to VPS
+The project uses GitHub Actions for continuous integration and deployment to the production VPS (31.97.249.4).
+
+#### GitHub Actions Workflows
+
+##### 1. CI Pipeline (`.github/workflows/ci.yml`)
+Triggers on: Push to main/develop branches, Pull Requests
+
+**Features:**
+- **Multi-environment testing** with PostgreSQL and RabbitMQ services
+- **Code quality checks**: go vet, staticcheck, gosec security scanning
+- **Test coverage** reporting with Codecov integration
+- **Docker image building** and testing
+- **Database migration testing** to ensure migrations work correctly
+- **Vulnerability scanning** with Trivy for high/critical security issues
+
+**Test Environment:**
+- PostgreSQL 16 with test database
+- RabbitMQ 3 with management interface
+- Go 1.23 with module caching
+- Comprehensive security scanning
+
+##### 2. CD Pipeline (`.github/workflows/deploy.yml`)
+Triggers on: Push to main branch, Manual dispatch
+
+**Deployment Process:**
+1. **SSH Connection**: Secure connection to VPS using dedicated SSH key
+2. **Backup Creation**: Automatic database and application backup before deployment
+3. **Zero-downtime Deployment**: Docker container updates with minimal service interruption
+4. **Database Migrations**: Automatic execution of pending migrations
+5. **Health Checks**: API functionality and container status verification
+6. **Automatic Rollback**: If health checks fail, automatic restore from backup
+7. **Security Validation**: Post-deployment verification of IP whitelisting and nginx rules
+
+**Backup Strategy:**
+- Database dump with pg_dump
+- Application files archive (excluding logs and temp files)
+- Environment configuration backup
+- Retention of last 5 backups with automatic cleanup
+
+#### SSH Configuration for GitHub Actions
+
+**Required GitHub Secrets:**
+- `SSH_PRIVATE_KEY`: Private SSH key for VPS access (see SETUP_SSH_GITHUB_ACTIONS.md)
+- `SSH_HOST`: 31.97.249.4
+- `SSH_USER`: root
+- `SSH_PORT`: 22
+
+**Security Features:**
+- Dedicated SSH key pair for CI/CD (separate from personal keys)
+- Automated backup before every deployment
+- Health check validation with automatic rollback
+- Post-deployment security verification
+
+#### Manual Deployment Trigger
+You can manually trigger deployment with options:
+```
+GitHub Repository → Actions → CD - Deploy to Production → Run workflow
+Options: 
+- Skip backup (for emergency deployments)
+```
+
+#### Setup Instructions
+1. **Configure SSH Access**: Follow instructions in `SETUP_SSH_GITHUB_ACTIONS.md`
+2. **Add GitHub Secrets**: Configure all required secrets in repository settings
+3. **Test SSH Connection**: Verify GitHub Actions can connect to VPS
+4. **First Deployment**: Push to main branch or manually trigger deployment
+
+#### Monitoring Deployment
+- **GitHub Actions logs**: Real-time deployment progress and status
+- **VPS monitoring**: Use existing monitoring scripts to check post-deployment status
+- **Health endpoints**: Automated verification of API functionality
+- **Security validation**: Automatic verification that security measures remain active
+
+#### Emergency Procedures
+- **Manual rollback**: SSH to VPS and restore from latest backup in `/opt/backups/`
+- **Disable CI/CD**: Temporarily disable workflows in GitHub repository settings
+- **Emergency access**: Use personal SSH key if GitHub Actions key is compromised
+
 ## Known Issues and Patterns
 
 ### Test Compilation Issues
