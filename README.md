@@ -1,5 +1,9 @@
-# Trading Bot Application
+# CrypGo Machine 🚀
 
+Bot de trading de criptomoedas automatizado desenvolvido em Go com CI/CD automático.
+
+## 🔥 Deploy Automático Ativo
+Este projeto possui CI/CD automático com GitHub Actions para deploy na VPS de produção.
 
 ## High level design
 ```
