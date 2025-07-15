@@ -106,7 +106,18 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			
 			// Update the original bot reference to keep consistency
 			bot.SetEntryPrice(currentPrice)
-			bot.GetIntoPosition()
+			errOriginalPosition := bot.GetIntoPosition()
+			if errOriginalPosition != nil {
+				fmt.Printf("⚠️ [%s] Failed to set original bot position: %v\n", symbol, errOriginalPosition)
+				// Continue execution as the main operation (freshBot) already succeeded
+			}
+			
+			// Save the updated original bot to database to maintain consistency
+			errUpdateOriginal := ctx.tradingBotRepository.Update(bot)
+			if errUpdateOriginal != nil {
+				fmt.Printf("⚠️ [%s] Failed to update original bot reference in database: %v\n", symbol, errUpdateOriginal)
+				// Note: We don't return error here because the main operation (freshBot) already succeeded
+			}
 		}
 		return nil
 
@@ -156,7 +167,18 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			
 			// Update the original bot reference to keep consistency
 			bot.ClearEntryPrice()
-			bot.GetOutOfPosition()
+			errOriginalPosition := bot.GetOutOfPosition()
+			if errOriginalPosition != nil {
+				fmt.Printf("⚠️ [%s] Failed to clear original bot position: %v\n", symbol, errOriginalPosition)
+				// Continue execution as the main operation (freshBot) already succeeded
+			}
+			
+			// Save the updated original bot to database to maintain consistency
+			errUpdateOriginal := ctx.tradingBotRepository.Update(bot)
+			if errUpdateOriginal != nil {
+				fmt.Printf("⚠️ [%s] Failed to update original bot reference in database: %v\n", symbol, errUpdateOriginal)
+				// Note: We don't return error here because the main operation (freshBot) already succeeded
+			}
 		}
 		return nil
 
