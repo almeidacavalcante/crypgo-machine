@@ -15,8 +15,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Configurações da VPS
-VPS_HOST="31.97.249.4"
-VPS_USER="root"
+VPS_HOST="crypgo-vps"
 PROJECT_PATH="/opt/crypgo-machine"
 
 echo -e "${BLUE}📊 CrypGo Trading Bot - Monitor de Logs${NC}"
@@ -45,7 +44,7 @@ run_ssh_command() {
     echo -e "${BLUE}[INFO]${NC} Conectando na VPS..."
     echo -e "${BLUE}[INFO]${NC} Pressione Ctrl+C para sair dos logs"
     echo ""
-    ssh -t ${VPS_USER}@${VPS_HOST} "cd ${PROJECT_PATH} && ${command}"
+    ssh -t ${VPS_HOST} "cd ${PROJECT_PATH} && ${command}"
 }
 
 # Função para buscar palavra-chave
@@ -53,7 +52,7 @@ search_logs() {
     echo -n -e "${YELLOW}Digite a palavra-chave para buscar: ${NC}"
     read keyword
     if [ ! -z "$keyword" ]; then
-        run_ssh_command "docker-compose -f docker-compose.full.yml logs --no-color | grep -i '$keyword'"
+        run_ssh_command "docker-compose -f docker-compose.full.yml logs --no-color --since 24h | grep -i '$keyword'"
     else
         echo -e "${RED}[ERROR]${NC} Palavra-chave não pode estar vazia"
     fi
@@ -68,23 +67,23 @@ while true; do
     case $choice in
         1)
             echo -e "${GREEN}[INFO]${NC} Monitorando logs da aplicação CrypGo..."
-            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --tail 50 crypgo-app"
+            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --since 24h crypgo-app"
             ;;
         2)
             echo -e "${GREEN}[INFO]${NC} Monitorando logs de todos os serviços..."
-            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --tail 20"
+            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --since 24h"
             ;;
         3)
             echo -e "${GREEN}[INFO]${NC} Monitorando logs do PostgreSQL..."
-            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --tail 30 postgres"
+            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --since 24h postgres"
             ;;
         4)
             echo -e "${GREEN}[INFO]${NC} Monitorando logs do RabbitMQ..."
-            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --tail 30 rabbitmq"
+            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --since 24h rabbitmq"
             ;;
         5)
             echo -e "${GREEN}[INFO]${NC} Monitorando logs do Nginx..."
-            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --tail 30 nginx"
+            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --since 24h nginx"
             ;;
         6)
             echo -e "${GREEN}[INFO]${NC} Verificando status dos containers..."
@@ -97,7 +96,7 @@ while true; do
             ;;
         8)
             echo -e "${GREEN}[INFO]${NC} Monitorando apenas erros e warnings..."
-            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --tail 100 | grep -i -E 'error|warn|fatal|exception|panic'"
+            run_ssh_command "docker-compose -f docker-compose.full.yml logs -f --since 24h | grep -i -E 'error|warn|fatal|exception|panic'"
             ;;
         9)
             echo -e "${GREEN}[INFO]${NC} Saindo do monitor..."

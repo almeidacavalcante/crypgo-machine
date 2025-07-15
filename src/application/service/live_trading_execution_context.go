@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/adshao/go-binance/v2"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,8 @@ type LiveTradingExecutionContext struct {
 	messageBroker                queue.MessageBroker
 	exchangeName                 string
 	shouldContinue               bool
+	// Mutex to prevent race conditions during trade execution
+	tradeMutex                   sync.RWMutex
 }
 
 // NewLiveTradingExecutionContext creates a new LiveTradingExecutionContext
@@ -41,69 +44,119 @@ func NewLiveTradingExecutionContext(
 	}
 }
 
-// ExecuteTrade executes real trading orders via Binance API
+// ExecuteTrade executes real trading orders via Binance API with race condition protection
 func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDecision, bot *entity.TradingBot, currentPrice float64, timestamp time.Time) error {
+	// Acquire exclusive lock to prevent race conditions
+	ctx.tradeMutex.Lock()
+	defer ctx.tradeMutex.Unlock()
+
 	symbol := bot.GetSymbol().GetValue()
 	quantity := bot.GetQuantity()
+	botId := bot.Id.GetValue()
+
+	fmt.Printf("🔒 [%s] Acquiring trade lock for %s decision (bot: %s)\n", symbol, decision, botId)
+
+	// Get fresh bot state from database to avoid stale data
+	freshBot, err := ctx.tradingBotRepository.GetTradeByID(botId)
+	if err != nil {
+		return fmt.Errorf("failed to get fresh bot state: %v", err)
+	}
 
 	switch decision {
 	case entity.Buy:
-		if bot.GetIsPositioned() {
-			return fmt.Errorf("this trading bot already has an open position")
+		// Double-check with fresh bot state to prevent race conditions
+		if freshBot.GetIsPositioned() {
+			fmt.Printf("🚫 [%s] BUY rejected - bot already positioned (race condition prevented)\n", symbol)
+			return fmt.Errorf("this trading bot already has an open position (fresh check)")
 		}
-		fmt.Printf("🟢 [%s] BUY order (qty: %.6f, price: %.2f)\n", symbol, quantity, currentPrice)
+		
+		// Additional validation: check if bot was positioned in the last few seconds
+		if bot.GetIsPositioned() {
+			fmt.Printf("🚫 [%s] BUY rejected - bot positioned in memory (race condition prevented)\n", symbol)
+			return fmt.Errorf("this trading bot already has an open position (memory check)")
+		}
+		
+		fmt.Printf("🟢 [%s] BUY order validated (qty: %.6f, price: %.2f, bot: %s)\n", symbol, quantity, currentPrice, botId)
 
 		isOrderPlaced := ctx.placeBuyOrder(symbol, quantity)
 		if isOrderPlaced {
 			// Set entry price when entering position
-			bot.SetEntryPrice(currentPrice)
-			fmt.Printf("📈 [%s] Position opened at %.2f\n", symbol, currentPrice)
+			freshBot.SetEntryPrice(currentPrice)
+			fmt.Printf("📈 [%s] Position opened at %.2f (bot: %s)\n", symbol, currentPrice, botId)
 
-			errPosition := bot.GetIntoPosition()
+			errPosition := freshBot.GetIntoPosition()
 			if errPosition != nil {
+				fmt.Printf("❌ [%s] Failed to set positioned state: %v\n", symbol, errPosition)
 				return errPosition
 			}
-			errUpdate := ctx.tradingBotRepository.Update(bot)
+			
+			// Critical: Update database immediately after position change
+			errUpdate := ctx.tradingBotRepository.Update(freshBot)
 			if errUpdate != nil {
+				fmt.Printf("❌ [%s] Failed to update bot position in database: %v\n", symbol, errUpdate)
 				return errUpdate
 			}
+			
+			fmt.Printf("✅ [%s] Bot position updated in database (bot: %s)\n", symbol, botId)
 
 			// Emit buy event
-			if err := ctx.emitTradingEvent("trading.buy_executed", bot, currentPrice, quantity, 0, 0, timestamp); err != nil {
+			if err := ctx.emitTradingEvent("trading.buy_executed", freshBot, currentPrice, quantity, 0, 0, timestamp); err != nil {
 				fmt.Printf("⚠️ Failed to emit buy event: %v\n", err)
 			}
+			
+			// Update the original bot reference to keep consistency
+			bot.SetEntryPrice(currentPrice)
+			bot.GetIntoPosition()
 		}
 		return nil
 
 	case entity.Sell:
+		// Double-check with fresh bot state to prevent race conditions
+		if !freshBot.GetIsPositioned() {
+			fmt.Printf("🚫 [%s] SELL rejected - bot not positioned (race condition prevented)\n", symbol)
+			return fmt.Errorf("this trading bot don't have an open position (fresh check)")
+		}
+		
+		// Additional validation: check memory state
 		if !bot.GetIsPositioned() {
-			return fmt.Errorf("this trading bot don't have an open position")
+			fmt.Printf("🚫 [%s] SELL rejected - bot not positioned in memory (race condition prevented)\n", symbol)
+			return fmt.Errorf("this trading bot don't have an open position (memory check)")
 		}
 
-		actualProfit := ((currentPrice - bot.GetEntryPrice()) / bot.GetEntryPrice()) * 100
-		fmt.Printf("🔴 [%s] SELL order (qty: %.6f, profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
-			symbol, quantity, actualProfit, bot.GetEntryPrice(), currentPrice)
+		actualProfit := ((currentPrice - freshBot.GetEntryPrice()) / freshBot.GetEntryPrice()) * 100
+		fmt.Printf("🔴 [%s] SELL order validated (qty: %.6f, profit: %.2f%%, entry: %.2f, current: %.2f, bot: %s)\n", 
+			symbol, quantity, actualProfit, freshBot.GetEntryPrice(), currentPrice, botId)
 
 		isOrderPlaced := ctx.placeSellOrder(symbol, quantity)
 		if isOrderPlaced {
 			// Clear entry price when exiting position
-			entryPrice := bot.GetEntryPrice()
-			bot.ClearEntryPrice()
-			fmt.Printf("📉 [%s] Position closed\n", symbol)
+			entryPrice := freshBot.GetEntryPrice()
+			freshBot.ClearEntryPrice()
+			fmt.Printf("📉 [%s] Position closed (bot: %s)\n", symbol, botId)
 
-			errPosition := bot.GetOutOfPosition()
+			errPosition := freshBot.GetOutOfPosition()
 			if errPosition != nil {
+				fmt.Printf("❌ [%s] Failed to clear positioned state: %v\n", symbol, errPosition)
 				return errPosition
 			}
-			errUpdate := ctx.tradingBotRepository.Update(bot)
+			
+			// Critical: Update database immediately after position change
+			errUpdate := ctx.tradingBotRepository.Update(freshBot)
 			if errUpdate != nil {
+				fmt.Printf("❌ [%s] Failed to update bot position in database: %v\n", symbol, errUpdate)
 				return errUpdate
 			}
+			
+			fmt.Printf("✅ [%s] Bot position cleared in database (bot: %s)\n", symbol, botId)
 
 			// Emit sell event
-			if err := ctx.emitTradingEvent("trading.sell_executed", bot, currentPrice, quantity, entryPrice, actualProfit, timestamp); err != nil {
+			if err := ctx.emitTradingEvent("trading.sell_executed", freshBot, currentPrice, quantity, entryPrice, actualProfit, timestamp); err != nil {
 				fmt.Printf("⚠️ Failed to emit sell event: %v\n", err)
 			}
+			
+			// Update the original bot reference to keep consistency
+			bot.ClearEntryPrice()
+			bot.GetOutOfPosition()
 		}
 		return nil
 
