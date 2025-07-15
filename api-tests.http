@@ -9,8 +9,8 @@
 
 ### 🔧 CONFIGURAÇÃO DE AMBIENTE
 ### Descomente a linha desejada para trocar entre localhost e produção:
-@baseUrl = http://localhost:8080
-#@baseUrl = http://31.97.249.4
+#@baseUrl = http://localhost:8080
+@baseUrl = http://31.97.249.4
 
 ### 📊 VARIÁVEIS ÚTEIS PARA TESTES
 ### Substitua pelos IDs reais dos bots após criá-los:
@@ -86,13 +86,13 @@ Content-Type: application/json
 }
 
 ###
-### 5b. Exemplo: Parar bot específico usando ID de produção (descomente para usar)
- POST {{baseUrl}}/api/v1/trading/stop
- Content-Type: application/json
+### 5. Parar trading bot
+POST {{baseUrl}}/api/v1/trading/stop
+Content-Type: application/json
 
- {
-   "bot_id": "{{BOT}}"
- }
+{
+  "bot_id": "{{BOT}}"
+}
 
 ### ========================================
 ### 📊 BACKTESTING E OTIMIZAÇÃO  
