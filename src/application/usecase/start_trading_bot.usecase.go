@@ -133,10 +133,10 @@ func (uc *StartTradingBotUseCase) runStrategyLoop(tradingBot *entity.TradingBot)
 // ExecuteAnalysisAndTrade performs a single analysis and trading decision
 // This method is public so it can be reused by other use cases like backtest
 func (uc *StartTradingBotUseCase) ExecuteAnalysisAndTrade(tradingBot *entity.TradingBot) error {
-	// Fetch market data using abstraction
-	klines, err := uc.dataSource.GetMarketData(tradingBot.GetSymbol().GetValue())
+	// Fetch market data using abstraction with bot's configured interval
+	klines, err := uc.dataSource.GetMarketData(tradingBot.GetSymbol().GetValue(), tradingBot.GetIntervalSeconds())
 	if err != nil {
-		return fmt.Errorf("error fetching market data for %s: %v", tradingBot.GetSymbol().GetValue(), err)
+		return fmt.Errorf("error fetching market data for %s with interval %ds: %v", tradingBot.GetSymbol().GetValue(), tradingBot.GetIntervalSeconds(), err)
 	}
 
 	strategy := tradingBot.GetStrategy()

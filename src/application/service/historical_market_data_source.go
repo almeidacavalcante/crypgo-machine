@@ -23,7 +23,8 @@ func NewHistoricalMarketDataSource(historicalData []vo.Kline, windowSize int) *H
 }
 
 // GetMarketData returns a window of historical klines ending at the current index
-func (s *HistoricalMarketDataSource) GetMarketData(symbol string) ([]vo.Kline, error) {
+// Note: intervalSeconds is ignored for historical data as the data is already filtered by interval
+func (s *HistoricalMarketDataSource) GetMarketData(symbol string, intervalSeconds int) ([]vo.Kline, error) {
 	if s.currentIndex >= len(s.historicalData) {
 		return nil, fmt.Errorf("no more historical data available")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypgo-machine/src/domain/vo"
 	"crypgo-machine/src/infra/external"
+	"fmt"
 	"strconv"
 	"time"
 )
@@ -20,11 +21,17 @@ func NewLiveMarketDataSource(client external.BinanceClientInterface) *LiveMarket
 	}
 }
 
-// GetMarketData fetches the latest klines from Binance API
-func (s *LiveMarketDataSource) GetMarketData(symbol string) ([]vo.Kline, error) {
+// GetMarketData fetches the latest klines from Binance API with dynamic interval
+func (s *LiveMarketDataSource) GetMarketData(symbol string, intervalSeconds int) ([]vo.Kline, error) {
+	// Convert seconds to Binance interval format
+	interval, err := external.SecondsToInterval(intervalSeconds)
+	if err != nil {
+		return nil, fmt.Errorf("invalid interval %d seconds: %v", intervalSeconds, err)
+	}
+	
 	binanceKlines, err := s.client.NewKlinesService().
 		Symbol(symbol).
-		Interval("1h"). // TODO: Make this configurable
+		Interval(interval).
 		Limit(100).
 		Do(context.Background())
 
