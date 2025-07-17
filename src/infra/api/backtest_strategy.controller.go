@@ -24,20 +24,21 @@ func NewBacktestStrategyController(backtestUseCase *usecase.BacktestStrategyUseC
 }
 
 type BacktestRequest struct {
-	StrategyName            string            `json:"strategy_name"`
-	Symbol                  string            `json:"symbol"`
-	HistoricalData          []HistoricalKline `json:"historical_data,omitempty"`        // Optional for manual data
-	InitialCapital          float64           `json:"initial_capital"`
-	TradeAmount             float64           `json:"trade_amount,omitempty"`           // Fixed amount per trade (optional, 0 = use all capital)
-	Currency                string            `json:"currency"`
-	StartDate               string            `json:"start_date,omitempty"`             // Optional - will use yesterday if not provided
-	EndDate                 string            `json:"end_date,omitempty"`               // Optional - will use yesterday if not provided
-	TradingFees             float64           `json:"trading_fees"`                     // Percentage (e.g., 0.1 for 0.1%)
-	MinimumProfitThreshold  float64           `json:"minimum_profit_threshold,omitempty"` // Minimum profit % to sell (default: 0 = sell at any profit)
-	UseYesterday            bool              `json:"use_yesterday,omitempty"`          // If true, fetch yesterday's data from Binance
-	UseLastWeek             bool              `json:"use_last_week,omitempty"`          // If true, fetch last week's data from Binance
-	UseBinanceData          bool              `json:"use_binance_data,omitempty"`       // If true, fetch data from start_date to today
-	Interval                string            `json:"interval,omitempty"`               // Interval for Binance data (1m, 30m, 1h, 4h, 1d)
+	StrategyName            string                 `json:"strategy_name"`
+	Symbol                  string                 `json:"symbol"`
+	Params                  map[string]interface{} `json:"params,omitempty"`                 // Strategy parameters (e.g., FastWindow, SlowWindow for MovingAverage)
+	HistoricalData          []HistoricalKline      `json:"historical_data,omitempty"`        // Optional for manual data
+	InitialCapital          float64                `json:"initial_capital"`
+	TradeAmount             float64                `json:"trade_amount,omitempty"`           // Fixed amount per trade (optional, 0 = use all capital)
+	Currency                string                 `json:"currency"`
+	StartDate               string                 `json:"start_date,omitempty"`             // Optional - will use yesterday if not provided
+	EndDate                 string                 `json:"end_date,omitempty"`               // Optional - will use yesterday if not provided
+	TradingFees             float64                `json:"trading_fees"`                     // Percentage (e.g., 0.1 for 0.1%)
+	MinimumProfitThreshold  float64                `json:"minimum_profit_threshold,omitempty"` // Minimum profit % to sell (default: 0 = sell at any profit)
+	UseYesterday            bool                   `json:"use_yesterday,omitempty"`          // If true, fetch yesterday's data from Binance
+	UseLastWeek             bool                   `json:"use_last_week,omitempty"`          // If true, fetch last week's data from Binance
+	UseBinanceData          bool                   `json:"use_binance_data,omitempty"`       // If true, fetch data from start_date to today
+	Interval                string                 `json:"interval,omitempty"`               // Interval for Binance data (1m, 30m, 1h, 4h, 1d)
 }
 
 // YesterdayBacktestRequest is a simplified request for yesterday's data
@@ -210,6 +211,7 @@ func (c *BacktestStrategyController) Handle(w http.ResponseWriter, r *http.Reque
 	input := usecase.InputBacktestStrategy{
 		StrategyName:           req.StrategyName,
 		Symbol:                 req.Symbol,
+		Params:                 req.Params,
 		HistoricalData:         klines,
 		InitialCapital:         req.InitialCapital,
 		TradeAmount:            req.TradeAmount,

@@ -41,6 +41,10 @@ func (m *MockTradeBotRepository) GetAllTradingBots() ([]*entity.TradingBot, erro
 	return nil, nil
 }
 
+func (m *MockTradeBotRepository) GetTradingBotsByStatus(status entity.Status) ([]*entity.TradingBot, error) {
+	return nil, nil
+}
+
 // MockMessageBroker implements queue.MessageBroker for testing
 type MockMessageBroker struct{}
 

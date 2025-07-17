@@ -120,7 +120,7 @@ func TestStartTradingBotUseCase_WhipsawScenario(t *testing.T) {
 	}
 
 	// Simulate the strategy loop execution manually (since we can't wait for goroutine)
-	klines, err := useCase.getMarketData(bot.GetSymbol().GetValue())
+	klines, err := useCase.getMarketData(bot.GetSymbol().GetValue(), 300)
 	if err != nil {
 		t.Fatalf("Failed to get market data: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestStartTradingBotUseCase_StrongTrendScenario(t *testing.T) {
 	}
 
 	// Simulate the strategy loop execution manually
-	klines, err := useCase.getMarketData(bot.GetSymbol().GetValue())
+	klines, err := useCase.getMarketData(bot.GetSymbol().GetValue(), 300)
 	if err != nil {
 		t.Fatalf("Failed to get market data: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestStartTradingBotUseCase_DecisionLogCreation(t *testing.T) {
 	}
 
 	// Simulate strategy execution (what happens in the goroutine)
-	klines, err := useCase.getMarketData(bot.GetSymbol().GetValue())
+	klines, err := useCase.getMarketData(bot.GetSymbol().GetValue(), 300)
 	if err != nil {
 		t.Fatalf("Failed to get market data: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestStartTradingBotUseCase_BinanceErrorHandling(t *testing.T) {
 	}
 
 	// Try to get market data (simulating what happens in the goroutine)
-	_, err = useCase.getMarketData(bot.GetSymbol().GetValue())
+	_, err = useCase.getMarketData(bot.GetSymbol().GetValue(), 300)
 	if err == nil {
 		t.Fatal("Expected error from Binance client, got none")
 	}
@@ -320,7 +320,7 @@ func BenchmarkStartTradingBotUseCase_StrategyExecution(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		klines, _ := useCase.getMarketData(bot.GetSymbol().GetValue())
+		klines, _ := useCase.getMarketData(bot.GetSymbol().GetValue(), 300)
 		strategy := bot.GetStrategy()
 		_ = strategy.Decide(klines, bot)
 	}

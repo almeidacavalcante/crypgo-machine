@@ -1,0 +1,18 @@
+{
+  "strategy_name": "MovingAverage",
+  "symbol": "SOLBRL",
+  "params": {
+    "FastWindow": 5,
+    "SlowWindow": 20,
+    "MinimumSpread": 1.0
+  },
+  "initial_capital": 1000.0,
+  "trade_amount": 500.0,
+  "currency": "BRL",
+  "start_date": "2025-07-15T00:00:00Z",
+  "end_date": "2025-07-16T23:59:59Z",
+  "trading_fees": 0.001,
+  "minimum_profit_threshold": 2.0,
+  "use_binance_data": true,
+  "interval": "5m"
+}

@@ -13,19 +13,19 @@ import (
 
 // BacktestTradingBotInput contains the parameters for running a backtest
 type BacktestTradingBotInput struct {
-	Symbol                 string    `json:"symbol"`
-	Strategy               string    `json:"strategy"`
+	Symbol                 string                 `json:"symbol"`
+	Strategy               string                 `json:"strategy"`
 	StrategyParams         map[string]interface{} `json:"strategy_params"`
-	StartDate              time.Time `json:"start_date"`
-	EndDate                time.Time `json:"end_date"`
-	InitialCapital         float64   `json:"initial_capital"`
-	TradeAmount            float64   `json:"trade_amount"`
-	TradingFees            float64   `json:"trading_fees"`
-	MinimumProfitThreshold float64   `json:"minimum_profit_threshold"`
-	Interval               string    `json:"interval"`
-	Currency               string    `json:"currency"`
-	Quantity               float64   `json:"quantity"`
-	IntervalSeconds        int       `json:"interval_seconds"`
+	StartDate              time.Time              `json:"start_date"`
+	EndDate                time.Time              `json:"end_date"`
+	InitialCapital         float64                `json:"initial_capital"`
+	TradeAmount            float64                `json:"trade_amount"`
+	TradingFees            float64                `json:"trading_fees"`
+	MinimumProfitThreshold float64                `json:"minimum_profit_threshold"`
+	Interval               string                 `json:"interval"`
+	Currency               string                 `json:"currency"`
+	Quantity               float64                `json:"quantity"`
+	IntervalSeconds        int                    `json:"interval_seconds"`
 }
 
 // BacktestTradingBotUseCase performs backtesting using the same logic as live trading
@@ -52,8 +52,8 @@ func (uc *BacktestTradingBotUseCase) Execute(input BacktestTradingBotInput) (*se
 		return nil, fmt.Errorf("no historical data available for the specified period")
 	}
 
-	fmt.Printf("📊 Loaded %d klines for backtesting %s from %s to %s\n", 
-		len(historicalData), input.Symbol, 
+	fmt.Printf("📊 Loaded %d klines for backtesting %s from %s to %s\n",
+		len(historicalData), input.Symbol,
 		input.StartDate.Format("2006-01-02"), input.EndDate.Format("2006-01-02"))
 
 	// 2. Create bot with specified strategy
@@ -77,23 +77,23 @@ func (uc *BacktestTradingBotUseCase) Execute(input BacktestTradingBotInput) (*se
 
 	// 5. Run the backtest simulation
 	fmt.Printf("🚀 Starting backtest simulation...\n")
-	
+
 	processedCandles := 0
 	totalCandles := len(historicalData)
-	
+
 	for dataSource.HasMoreData() {
 		// Execute one analysis and trade decision
 		if err := tradingUseCase.ExecuteAnalysisAndTrade(bot); err != nil {
 			fmt.Printf("⚠️ Error during backtest at candle %d: %v\n", processedCandles, err)
 		}
-		
+
 		// Advance to next candle
 		if !dataSource.AdvanceToNext() {
 			break
 		}
-		
+
 		processedCandles++
-		
+
 		// Show progress every 10% of the way
 		if processedCandles%max(1, totalCandles/10) == 0 {
 			progress := float64(processedCandles) / float64(totalCandles) * 100
@@ -103,7 +103,7 @@ func (uc *BacktestTradingBotUseCase) Execute(input BacktestTradingBotInput) (*se
 
 	// 6. Get and return results
 	result := executionContext.GetResult()
-	
+
 	fmt.Printf("\n📈 BACKTEST SUMMARY:\n")
 	fmt.Printf("   💰 Total P&L: %.2f BRL\n", result.TotalPnL)
 	fmt.Printf("   📊 ROI: %.2f%%\n", result.ROI)
@@ -119,16 +119,18 @@ func (uc *BacktestTradingBotUseCase) Execute(input BacktestTradingBotInput) (*se
 // fetchHistoricalData retrieves historical klines from Binance for the specified period
 func (uc *BacktestTradingBotUseCase) fetchHistoricalData(symbol string, startDate, endDate time.Time, interval string) ([]vo.Kline, error) {
 	var allKlines []vo.Kline
-	
+
 	// Binance has a limit of 1000 klines per request, so we may need multiple requests
 	currentStart := startDate
-	
+
 	for currentStart.Before(endDate) {
 		// Calculate end time for this batch (max 1000 klines)
 		var currentEnd time.Time
 		switch interval {
 		case "1h":
 			currentEnd = currentStart.Add(1000 * time.Hour)
+		case "5m":
+			currentEnd = currentStart.Add(5 * time.Minute)
 		case "4h":
 			currentEnd = currentStart.Add(4000 * time.Hour)
 		case "1d":
@@ -140,10 +142,10 @@ func (uc *BacktestTradingBotUseCase) fetchHistoricalData(symbol string, startDat
 		if currentEnd.After(endDate) {
 			currentEnd = endDate
 		}
-		
-		fmt.Printf("📥 Fetching data from %s to %s...\n", 
+
+		fmt.Printf("📥 Fetching data from %s to %s...\n",
 			currentStart.Format("2006-01-02 15:04"), currentEnd.Format("2006-01-02 15:04"))
-		
+
 		// Fetch klines for this period
 		binanceKlines, err := uc.client.NewKlinesService().
 			Symbol(symbol).
@@ -152,11 +154,11 @@ func (uc *BacktestTradingBotUseCase) fetchHistoricalData(symbol string, startDat
 			EndTime(currentEnd.UnixMilli()).
 			Limit(1000).
 			Do(context.Background())
-		
+
 		if err != nil {
 			return nil, fmt.Errorf("error fetching klines: %v", err)
 		}
-		
+
 		// Convert to domain klines
 		for _, bkline := range binanceKlines {
 			openPrice, _ := strconv.ParseFloat(bkline.Open, 64)
@@ -171,11 +173,11 @@ func (uc *BacktestTradingBotUseCase) fetchHistoricalData(symbol string, startDat
 			}
 			allKlines = append(allKlines, kline)
 		}
-		
+
 		// Move to next batch
 		currentStart = currentEnd.Add(time.Millisecond)
 	}
-	
+
 	return allKlines, nil
 }
 
@@ -186,13 +188,13 @@ func (uc *BacktestTradingBotUseCase) createBotForBacktest(input BacktestTradingB
 	if err != nil {
 		return nil, fmt.Errorf("invalid symbol: %v", err)
 	}
-	
+
 	// Use provided quantity or default
 	quantity := input.Quantity
 	if quantity <= 0 {
 		quantity = 0.001 // Default quantity
 	}
-	
+
 	// Create strategy with all parameters
 	var strategy entity.TradingStrategy
 	switch input.Strategy {
@@ -202,7 +204,7 @@ func (uc *BacktestTradingBotUseCase) createBotForBacktest(input BacktestTradingB
 		if !ok1 || !ok2 {
 			return nil, fmt.Errorf("invalid MovingAverage parameters")
 		}
-		
+
 		// Check for minimum spread parameter
 		if minimumSpread, ok := input.StrategyParams["MinimumSpread"].(float64); ok {
 			spread, err := vo.NewMinimumSpread(minimumSpread)
@@ -216,19 +218,19 @@ func (uc *BacktestTradingBotUseCase) createBotForBacktest(input BacktestTradingB
 	default:
 		return nil, fmt.Errorf("unsupported strategy: %s", input.Strategy)
 	}
-	
+
 	// Use provided currency or default
 	currency := input.Currency
 	if currency == "" {
 		currency = "BRL"
 	}
-	
+
 	// Use provided interval seconds or default
 	intervalSeconds := input.IntervalSeconds
 	if intervalSeconds <= 0 {
 		intervalSeconds = 3600 // 1 hour default
 	}
-	
+
 	// Create trading bot with all parameters
 	bot := entity.NewTradingBot(
 		symbol,
@@ -241,7 +243,7 @@ func (uc *BacktestTradingBotUseCase) createBotForBacktest(input BacktestTradingB
 		input.TradingFees,
 		input.MinimumProfitThreshold,
 	)
-	
+
 	return bot, nil
 }
 

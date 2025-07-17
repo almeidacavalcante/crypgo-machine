@@ -18,6 +18,7 @@ func NewBacktestStrategyUseCase() *BacktestStrategyUseCase {
 type InputBacktestStrategy struct {
 	StrategyName           string
 	Symbol                 string
+	Params                 map[string]interface{} // Strategy parameters (e.g., FastWindow, SlowWindow for MovingAverage)
 	HistoricalData         []vo.Kline
 	InitialCapital         float64
 	TradeAmount            float64 // Fixed amount to use per trade (optional, if 0 uses all available capital)
@@ -79,8 +80,8 @@ func (uc *BacktestStrategyUseCase) Execute(input InputBacktestStrategy) (*entity
 		isPositioned:           false,
 	}
 
-	// Create strategy instance based on strategy name
-	strategy, err := uc.createStrategy(input.StrategyName)
+	// Create strategy instance based on strategy name and parameters
+	strategy, err := uc.createStrategy(input.StrategyName, input.Params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create strategy: %w", err)
 	}
@@ -127,12 +128,48 @@ func (uc *BacktestStrategyUseCase) validateInput(input InputBacktestStrategy) er
 	return nil
 }
 
-func (uc *BacktestStrategyUseCase) createStrategy(strategyName string) (entity.TradingStrategy, error) {
+func (uc *BacktestStrategyUseCase) createStrategy(strategyName string, params map[string]interface{}) (entity.TradingStrategy, error) {
 	switch strategyName {
 	case "MovingAverage":
-		// Conservative parameters for reliable signals
-		minimumSpread, _ := vo.NewMinimumSpread(0.5) // 0.5% spread requirement
-		return entity.NewMovingAverageStrategyWithSpread(7, 40, minimumSpread), nil
+		// Default parameters - conservative for reliable signals
+		fastWindow := 7
+		slowWindow := 40
+		minimumSpreadValue := 0.5 // 0.5% spread requirement
+		
+		// Override with provided parameters if available
+		if params != nil {
+			if fw, ok := params["FastWindow"]; ok {
+				if fwFloat, ok := fw.(float64); ok {
+					fastWindow = int(fwFloat)
+				}
+			}
+			if sw, ok := params["SlowWindow"]; ok {
+				if swFloat, ok := sw.(float64); ok {
+					slowWindow = int(swFloat)
+				}
+			}
+			if ms, ok := params["MinimumSpread"]; ok {
+				if msFloat, ok := ms.(float64); ok {
+					minimumSpreadValue = msFloat
+				}
+			}
+		}
+		
+		// Validate parameters
+		if fastWindow <= 0 || slowWindow <= 0 || fastWindow >= slowWindow {
+			return nil, fmt.Errorf("invalid MovingAverage parameters: FastWindow (%d) must be positive and less than SlowWindow (%d)", fastWindow, slowWindow)
+		}
+		
+		if minimumSpreadValue < 0 {
+			return nil, fmt.Errorf("invalid MinimumSpread parameter: %f (must be non-negative)", minimumSpreadValue)
+		}
+		
+		minimumSpread, err := vo.NewMinimumSpread(minimumSpreadValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create MinimumSpread: %w", err)
+		}
+		
+		return entity.NewMovingAverageStrategyWithSpread(fastWindow, slowWindow, minimumSpread), nil
 	default:
 		return nil, fmt.Errorf("unsupported strategy: %s", strategyName)
 	}

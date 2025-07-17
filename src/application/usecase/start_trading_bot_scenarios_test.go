@@ -59,7 +59,7 @@ func TestMovingAverageStrategy_AntiWhipsawScenarios(t *testing.T) {
 			}
 			
 			// Execute strategy
-			klines, err := useCase.getMarketData(bot.GetSymbol().GetValue())
+			klines, err := useCase.getMarketData(bot.GetSymbol().GetValue(), 300)
 			if err != nil {
 				t.Fatalf("Failed to get market data: %v", err)
 			}
@@ -112,7 +112,7 @@ func TestTradingDecisionLog_FullWorkflow(t *testing.T) {
 	
 	// Simulate multiple strategy executions
 	for i := 0; i < 3; i++ {
-		klines, err := useCase.getMarketData(bot.GetSymbol().GetValue())
+		klines, err := useCase.getMarketData(bot.GetSymbol().GetValue(), 300)
 		if err != nil {
 			t.Fatalf("Failed to get market data: %v", err)
 		}
@@ -190,7 +190,7 @@ func TestMarketDataConversion(t *testing.T) {
 	binanceClient.SetPredefinedKlines(testKlines)
 	
 	// Convert to domain klines
-	domainKlines, err := useCase.getMarketData("BTCUSDT")
+	domainKlines, err := useCase.getMarketData("BTCUSDT", 300)
 	if err != nil {
 		t.Fatalf("Failed to convert market data: %v", err)
 	}
