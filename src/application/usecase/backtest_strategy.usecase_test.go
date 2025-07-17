@@ -158,14 +158,14 @@ func TestBacktestStrategyUseCase_Execute_InvalidInput(t *testing.T) {
 	}
 }
 
-func TestBacktestStrategyUseCase_BreakoutStrategy(t *testing.T) {
+func TestBacktestStrategyUseCase_UnsupportedStrategy(t *testing.T) {
 	useCase := NewBacktestStrategyUseCase()
 
-	// Create test historical data with breakout pattern
-	historicalData := createBreakoutTestData()
+	// Create test historical data
+	historicalData := createTestHistoricalData()
 
 	input := InputBacktestStrategy{
-		StrategyName:   "Breakout",
+		StrategyName:   "UnsupportedStrategy",
 		Symbol:         "BTCBRL",
 		HistoricalData: historicalData,
 		InitialCapital: 5000.0,
@@ -177,16 +177,12 @@ func TestBacktestStrategyUseCase_BreakoutStrategy(t *testing.T) {
 
 	result, err := useCase.Execute(input)
 
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
+	if err == nil {
+		t.Fatal("Expected error for unsupported strategy, got nil")
 	}
 
-	if result == nil {
-		t.Fatal("Expected result, got nil")
-	}
-
-	if result.GetStrategyName() != "Breakout" {
-		t.Errorf("Expected strategy name 'Breakout', got: %s", result.GetStrategyName())
+	if result != nil {
+		t.Error("Expected nil result for unsupported strategy")
 	}
 }
 

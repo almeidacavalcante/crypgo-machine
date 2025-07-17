@@ -36,7 +36,7 @@ func main() {
 		currency               = flag.String("currency", "BRL", "Currency for calculations")
 		quantity               = flag.Float64("quantity", 0.001, "Quantity per trade (for crypto pairs)")
 		intervalSeconds        = flag.Int("interval-seconds", 1800, "Interval in seconds for bot operations")
-		minimumSpread          = flag.Float64("min-spread", 0.5, "Minimum spread percentage for anti-whipsaw")
+		minimumSpread          = flag.Float64("min-spread", 0.1, "Minimum spread percentage for anti-whipsaw")
 		outputFile             = flag.String("output", "", "Output file for results (optional)")
 		apiKey                 = flag.String("api-key", "", "Binance API key (or use BINANCE_API_KEY env var)")
 		secretKey              = flag.String("secret-key", "", "Binance secret key (or use BINANCE_SECRET_KEY env var)")

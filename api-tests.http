@@ -9,12 +9,12 @@
 
 ### 🔧 CONFIGURAÇÃO DE AMBIENTE
 ### Descomente a linha desejada para trocar entre localhost e produção:
-@baseUrl = http://localhost:8080
-#@baseUrl = http://31.97.249.4
+#@baseUrl = http://localhost:8080
+@baseUrl = http://31.97.249.4
 
 ### 📊 VARIÁVEIS ÚTEIS PARA TESTES
 ### Substitua pelos IDs reais dos bots após criá-los:
-@BOT = 23ff5375-bd10-4c71-8964-eb73e9a7de1d
+@BOT = ae00a0fa-1bb7-4d71-bb56-917f540c29a1
 
 ### 🏭 IDs DOS BOTS EM PRODUÇÃO (para referência):
 ### @botIdProdSOL1 = 1b6f580e-908b-42eb-be78-9b982b91e192
@@ -37,7 +37,7 @@ Content-Type: application/json
 
 {
   "symbol": "SOLBRL",
-  "quantity": 0.5,
+  "quantity": 0.4,
   "strategy": "MovingAverage",
   "params": {
     "FastWindow": 3,
@@ -58,7 +58,7 @@ Content-Type: application/json
 
 {
   "symbol": "BTCBRL",
-  "quantity": 0.0002,
+  "quantity": 0.0005,
   "strategy": "MovingAverage",
   "params": {
     "FastWindow": 3,
@@ -129,8 +129,8 @@ Content-Type: application/json
 
 ###
 ### 5b. Exemplo: Parar bot específico usando ID de produção (descomente para usar)
- POST {{baseUrl}}/api/v1/trading/stop
- Content-Type: application/json
+POST {{baseUrl}}/api/v1/trading/stop
+Content-Type: application/json
 
  {
    "bot_id": "{{BOT}}"

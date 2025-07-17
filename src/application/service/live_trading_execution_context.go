@@ -112,14 +112,14 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			entryPrice := bot.GetEntryPrice()
 			if entryPrice > 0 {
 				potentialProfit := ((currentPrice - entryPrice) / entryPrice) * 100
-				fmt.Printf("⏸ [%s] HOLDING position (profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
-					symbol, potentialProfit, entryPrice, currentPrice)
-			} else {
-				fmt.Printf("⏸ [%s] HOLDING position (entry price unavailable)\n", symbol)
+				// Only log if profit is significant or price has changed meaningfully
+				if potentialProfit > 1.0 || potentialProfit < -1.0 {
+					fmt.Printf("⏸ [%s] HOLDING position (profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
+						symbol, potentialProfit, entryPrice, currentPrice)
+				}
 			}
-		} else {
-			fmt.Printf("⏸ [%s] HOLDING (no position)\n", symbol)
 		}
+		// Remove the "no position" hold messages as they're too verbose
 	}
 
 	return nil

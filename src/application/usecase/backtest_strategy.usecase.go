@@ -134,7 +134,7 @@ func (uc *BacktestStrategyUseCase) createStrategy(strategyName string, params ma
 		// Default parameters - conservative for reliable signals
 		fastWindow := 7
 		slowWindow := 40
-		minimumSpreadValue := 0.5 // 0.5% spread requirement
+		minimumSpreadValue := 0.1 // 0.1% spread requirement
 		
 		// Override with provided parameters if available
 		if params != nil {

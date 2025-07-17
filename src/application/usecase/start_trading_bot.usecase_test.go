@@ -128,20 +128,20 @@ func TestStartTradingBotUseCase_WhipsawScenario(t *testing.T) {
 	strategy := bot.GetStrategy()
 	analysisResult := strategy.Decide(klines, bot)
 
-	// The whipsaw test data actually has sufficient spread due to the long uptrend
-	// This is expected behavior - the test validates that strong trends generate BUY signals
-	if analysisResult.Decision != entity.Buy {
-		t.Errorf("Expected BUY decision with sufficient spread, got %v", analysisResult.Decision)
+	// The whipsaw test data with strong uptrend should generate HOLD (waiting for dip)
+	// This is expected behavior - the strategy waits for fast MA to go below slow MA
+	if analysisResult.Decision != entity.Hold {
+		t.Errorf("Expected HOLD decision with uptrend (waiting for dip), got %v", analysisResult.Decision)
 	}
 
-	// Verify the reason indicates sufficient spread
+	// Verify the reason indicates waiting for dip
 	reason, ok := analysisResult.AnalysisData["reason"].(string)
 	if !ok {
 		t.Fatal("Expected reason in analysis data")
 	}
 
-	if reason != "fast_above_slow_not_positioned_sufficient_spread" {
-		t.Errorf("Expected sufficient spread reason, got: %s", reason)
+	if reason != "fast_above_slow_wait_for_dip" {
+		t.Errorf("Expected wait for dip reason, got: %s", reason)
 	}
 }
 
@@ -178,15 +178,19 @@ func TestStartTradingBotUseCase_StrongTrendScenario(t *testing.T) {
 	strategy := bot.GetStrategy()
 	analysisResult := strategy.Decide(klines, bot)
 
-	// With strong trend data, should generate a BUY signal (bot not positioned)
-	if analysisResult.Decision != entity.Buy {
-		t.Errorf("Expected BUY decision with strong trend, got %v", analysisResult.Decision)
+	// With strong trend data, should generate a HOLD signal (waiting for dip)
+	if analysisResult.Decision != entity.Hold {
+		t.Errorf("Expected HOLD decision with strong trend (waiting for dip), got %v", analysisResult.Decision)
 	}
 
-	// Verify sufficient spread
-	hasSufficientSpread, ok := analysisResult.AnalysisData["hasSufficientSpread"].(bool)
-	if !ok || !hasSufficientSpread {
-		t.Error("Expected sufficient spread for strong trend data")
+	// Verify the reason indicates waiting for dip
+	reason, ok := analysisResult.AnalysisData["reason"].(string)
+	if !ok {
+		t.Fatal("Expected reason in analysis data")
+	}
+
+	if reason != "fast_above_slow_wait_for_dip" {
+		t.Errorf("Expected wait for dip reason, got: %s", reason)
 	}
 }
 

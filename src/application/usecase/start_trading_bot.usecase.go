@@ -102,6 +102,12 @@ func (uc *StartTradingBotUseCase) Execute(input InputStartTradingBot) error {
 	}
 
 	go uc.runStrategyLoop(tradingBot)
+	
+	fmt.Printf("✅ [%s] Bot started - %s strategy (%.6f qty, %ds intervals)\n", 
+		tradingBot.GetSymbol().GetValue(), 
+		tradingBot.GetStrategy().GetName(), 
+		tradingBot.GetQuantity(), 
+		tradingBot.GetIntervalSeconds())
 
 	return nil
 }
@@ -117,6 +123,10 @@ func (uc *StartTradingBotUseCase) runStrategyLoop(tradingBot *entity.TradingBot)
 	// Then start the ticker for subsequent executions
 	ticker := time.NewTicker(time.Duration(tradingBot.GetIntervalSeconds()) * time.Second)
 	defer ticker.Stop()
+	
+	// Status ticker - show summary every 10 minutes
+	statusTicker := time.NewTicker(10 * time.Minute)
+	defer statusTicker.Stop()
 
 	for {
 		select {
@@ -125,6 +135,24 @@ func (uc *StartTradingBotUseCase) runStrategyLoop(tradingBot *entity.TradingBot)
 			if !shouldContinue {
 				fmt.Printf("🛑 Trading bot %s stopped, exiting loop\n", tradingBot.Id.GetValue())
 				return // Exit the loop completely
+			}
+		case <-statusTicker.C:
+			// Show periodic status summary
+			symbol := tradingBot.GetSymbol().GetValue()
+			if tradingBot.GetIsPositioned() {
+				entryPrice := tradingBot.GetEntryPrice()
+				if entryPrice > 0 {
+					// Get current price for profit calculation
+					klines, err := uc.dataSource.GetMarketData(symbol, tradingBot.GetIntervalSeconds())
+					if err == nil && len(klines) > 0 {
+						currentPrice := klines[len(klines)-1].Close()
+						profit := ((currentPrice - entryPrice) / entryPrice) * 100
+						fmt.Printf("📊 [%s] Status: POSITIONED (entry: %.2f, current: %.2f, profit: %.2f%%)\n", 
+							symbol, entryPrice, currentPrice, profit)
+					}
+				}
+			} else {
+				fmt.Printf("📊 [%s] Status: MONITORING (no position)\n", symbol)
 			}
 		}
 	}
@@ -170,33 +198,36 @@ func (uc *StartTradingBotUseCase) ExecuteAnalysisAndTrade(tradingBot *entity.Tra
 	}
 
 	// Format analysis data in a more readable way
-	var analysisStr string
 	symbol := tradingBot.GetSymbol().GetValue()
 	
-	if reason, exists := analysisResult.AnalysisData["reason"]; exists {
-		analysisStr = fmt.Sprintf("reason: %v", reason)
-		
-		// Add key metrics if available
-		if currentPrice, exists := analysisResult.AnalysisData["currentPrice"]; exists {
-			analysisStr += fmt.Sprintf(", price: %.2f", currentPrice)
-		}
-		if fast, exists := analysisResult.AnalysisData["fast"]; exists {
-			if slow, exists := analysisResult.AnalysisData["slow"]; exists {
-				analysisStr += fmt.Sprintf(", MA(%.1f/%.1f)", fast, slow)
+	// Only log significant events (no verbose HOLD messages)
+	if analysisResult.Decision != entity.Hold {
+		var analysisStr string
+		if reason, exists := analysisResult.AnalysisData["reason"]; exists {
+			analysisStr = fmt.Sprintf("reason: %v", reason)
+			
+			// Add key metrics if available
+			if currentPrice, exists := analysisResult.AnalysisData["currentPrice"]; exists {
+				analysisStr += fmt.Sprintf(", price: %.2f", currentPrice)
 			}
+			if fast, exists := analysisResult.AnalysisData["fast"]; exists {
+				if slow, exists := analysisResult.AnalysisData["slow"]; exists {
+					analysisStr += fmt.Sprintf(", MA(%.1f/%.1f)", fast, slow)
+				}
+			}
+			if spread, exists := analysisResult.AnalysisData["actualSpread"]; exists {
+				analysisStr += fmt.Sprintf(", spread: %.2f%%", spread)
+			}
+			if minSpread, exists := analysisResult.AnalysisData["minimumSpread"]; exists {
+				analysisStr += fmt.Sprintf(" (min: %.1f%%)", minSpread)
+			}
+		} else {
+			analysisStr = fmt.Sprintf("%+v", analysisResult.AnalysisData)
 		}
-		if spread, exists := analysisResult.AnalysisData["actualSpread"]; exists {
-			analysisStr += fmt.Sprintf(", spread: %.2f%%", spread)
-		}
-		if minSpread, exists := analysisResult.AnalysisData["minimumSpread"]; exists {
-			analysisStr += fmt.Sprintf(" (min: %.1f%%)", minSpread)
-		}
-	} else {
-		analysisStr = fmt.Sprintf("%+v", analysisResult.AnalysisData)
+		
+		fmt.Printf("🤖 [%s] %s → %s (%s)\n",
+			symbol, strategy.GetName(), analysisResult.Decision, analysisStr)
 	}
-	
-	fmt.Printf("🤖 [%s] %s → %s (%s)\n",
-		symbol, strategy.GetName(), analysisResult.Decision, analysisStr)
 
 	// Execute trading decision using abstraction
 	if err := uc.executionContext.ExecuteTrade(analysisResult.Decision, tradingBot, currentPrice, currentTime); err != nil {

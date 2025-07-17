@@ -19,19 +19,19 @@ func TestMovingAverageStrategy_AntiWhipsawScenarios(t *testing.T) {
 		botPositioned    bool
 	}{
 		{
-			name:             "LongUptrend_WithSpread_ShouldBuy",
+			name:             "LongUptrend_WithSpread_ShouldHold",
 			klines:           external.CreateWhipsawKlines(),
-			minimumSpread:    0.5,
-			expectedDecision: entity.Buy,
-			expectedReason:   "fast_above_slow_not_positioned_sufficient_spread",
+			minimumSpread:    0.1,
+			expectedDecision: entity.Hold,
+			expectedReason:   "fast_above_slow_wait_for_dip",
 			botPositioned:    false,
 		},
 		{
-			name:             "StrongTrend_LargeSpread_ShouldBuy",
+			name:             "StrongTrend_LargeSpread_ShouldHold",
 			klines:           external.CreateStrongTrendKlines(),
-			minimumSpread:    0.5,
-			expectedDecision: entity.Buy,
-			expectedReason:   "fast_above_slow_not_positioned_sufficient_spread",
+			minimumSpread:    0.1,
+			expectedDecision: entity.Hold,
+			expectedReason:   "fast_above_slow_wait_for_dip",
 			botPositioned:    false,
 		},
 	}

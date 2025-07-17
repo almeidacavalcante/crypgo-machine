@@ -12,7 +12,7 @@ type MovingAverageStrategy struct {
 
 func NewMovingAverageStrategy(fast, slow int) *MovingAverageStrategy {
 
-	minimumSpread, _ := vo.NewMinimumSpread(0.5)
+	minimumSpread, _ := vo.NewMinimumSpread(0.1)
 
 	return &MovingAverageStrategy{
 		FastWindow:    fast,
