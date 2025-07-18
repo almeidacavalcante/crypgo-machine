@@ -78,7 +78,7 @@ func NewTradingBot(symbol vo.Symbol, quantity float64, strategy TradingStrategy,
 	}
 }
 
-func Restore(id *vo.EntityId, symbol vo.Symbol, quantity float64, strategy TradingStrategy, status Status, isPositioned bool, intervalSeconds int, initialCapital float64, tradeAmount float64, currency string, tradingFees float64, minimumProfitThreshold float64, createdAt time.Time) *TradingBot {
+func Restore(id *vo.EntityId, symbol vo.Symbol, quantity float64, strategy TradingStrategy, status Status, isPositioned bool, intervalSeconds int, initialCapital float64, tradeAmount float64, currency string, tradingFees float64, minimumProfitThreshold float64, entryPrice float64, createdAt time.Time) *TradingBot {
 	return &TradingBot{
 		Id:                     id,
 		symbol:                 symbol,
@@ -92,6 +92,7 @@ func Restore(id *vo.EntityId, symbol vo.Symbol, quantity float64, strategy Tradi
 		currency:               currency,
 		tradingFees:            tradingFees,
 		minimumProfitThreshold: minimumProfitThreshold,
+		entryPrice:             entryPrice,
 		createdAt:              createdAt,
 	}
 }

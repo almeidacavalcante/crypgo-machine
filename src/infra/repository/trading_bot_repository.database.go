@@ -27,8 +27,8 @@ func (r *TradingBotRepositoryDatabase) Save(bot *entity.TradingBot) error {
 	}
 
 	query := `
-		INSERT INTO trade_bots (id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		INSERT INTO trade_bots (id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, entry_price, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 	_, err = r.db.Exec(query,
 		string(bot.Id.GetValue()),
@@ -44,6 +44,7 @@ func (r *TradingBotRepositoryDatabase) Save(bot *entity.TradingBot) error {
 		bot.GetCurrency(),
 		bot.GetTradingFees(),
 		bot.GetMinimumProfitThreshold(),
+		bot.GetEntryPrice(),
 		bot.GetCreatedAt(),
 	)
 	return err
@@ -57,7 +58,7 @@ func (r *TradingBotRepositoryDatabase) Update(bot *entity.TradingBot) error {
 
 	query := `
 		UPDATE trade_bots
-		SET symbol = $2, quantity = $3, strategy_name = $4, strategy_params = $5, status = $6, is_positioned = $7, interval_seconds = $8, initial_capital = $9, trade_amount = $10, currency = $11, trading_fees = $12, minimum_profit_threshold = $13, created_at = $14
+		SET symbol = $2, quantity = $3, strategy_name = $4, strategy_params = $5, status = $6, is_positioned = $7, interval_seconds = $8, initial_capital = $9, trade_amount = $10, currency = $11, trading_fees = $12, minimum_profit_threshold = $13, entry_price = $14, created_at = $15
 		WHERE id = $1
 	`
 	_, err = r.db.Exec(query,
@@ -74,6 +75,7 @@ func (r *TradingBotRepositoryDatabase) Update(bot *entity.TradingBot) error {
 		bot.GetCurrency(),
 		bot.GetTradingFees(),
 		bot.GetMinimumProfitThreshold(),
+		bot.GetEntryPrice(),
 		bot.GetCreatedAt(),
 	)
 	return err
@@ -88,7 +90,7 @@ func (r *TradingBotRepositoryDatabase) Exists(id string) (bool, error) {
 
 func (r *TradingBotRepositoryDatabase) GetTradeByID(id string) (*entity.TradingBot, error) {
 	query := `
-		SELECT id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, created_at
+		SELECT id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, entry_price, created_at
 		FROM trade_bots
 		WHERE id = $1
 	`
@@ -107,6 +109,7 @@ func (r *TradingBotRepositoryDatabase) GetTradeByID(id string) (*entity.TradingB
 		currency               string
 		tradingFees            float64
 		minimumProfitThreshold float64
+		entryPrice             float64
 		createdAt              time.Time
 	)
 
@@ -124,6 +127,7 @@ func (r *TradingBotRepositoryDatabase) GetTradeByID(id string) (*entity.TradingB
 		&currency,
 		&tradingFees,
 		&minimumProfitThreshold,
+		&entryPrice,
 		&createdAt,
 	)
 	if err != nil {
@@ -153,6 +157,7 @@ func (r *TradingBotRepositoryDatabase) GetTradeByID(id string) (*entity.TradingB
 		currency,
 		tradingFees,
 		minimumProfitThreshold,
+		entryPrice,
 		createdAt,
 	)
 
@@ -177,7 +182,7 @@ func (r *TradingBotRepositoryDatabase) buildStrategyFromParams(strategyName, str
 
 func (r *TradingBotRepositoryDatabase) GetAllTradingBots() ([]*entity.TradingBot, error) {
 	query := `
-		SELECT id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, created_at
+		SELECT id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, entry_price, created_at
 		FROM trade_bots
 	`
 	rows, err := r.db.Query(query)
@@ -201,9 +206,10 @@ func (r *TradingBotRepositoryDatabase) GetAllTradingBots() ([]*entity.TradingBot
 			currency               string
 			tradingFees            float64
 			minimumProfitThreshold float64
+			entryPrice             float64
 			createdAt              time.Time
 		)
-		if err := rows.Scan(&botID, &symbol, &quantity, &strategyName, &strategyParams, &status, &isPositioned, &intervalSeconds, &initialCapital, &tradeAmount, &currency, &tradingFees, &minimumProfitThreshold, &createdAt); err != nil {
+		if err := rows.Scan(&botID, &symbol, &quantity, &strategyName, &strategyParams, &status, &isPositioned, &intervalSeconds, &initialCapital, &tradeAmount, &currency, &tradingFees, &minimumProfitThreshold, &entryPrice, &createdAt); err != nil {
 			return nil, err
 		}
 
@@ -234,6 +240,7 @@ func (r *TradingBotRepositoryDatabase) GetAllTradingBots() ([]*entity.TradingBot
 			currency,
 			tradingFees,
 			minimumProfitThreshold,
+			entryPrice,
 			createdAt,
 		)
 
@@ -248,7 +255,7 @@ func (r *TradingBotRepositoryDatabase) GetAllTradingBots() ([]*entity.TradingBot
 
 func (r *TradingBotRepositoryDatabase) GetTradingBotsByStatus(status entity.Status) ([]*entity.TradingBot, error) {
 	query := `
-		SELECT id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, created_at
+		SELECT id, symbol, quantity, strategy_name, strategy_params, status, is_positioned, interval_seconds, initial_capital, trade_amount, currency, trading_fees, minimum_profit_threshold, entry_price, created_at
 		FROM trade_bots
 		WHERE status = $1
 	`
@@ -274,9 +281,10 @@ func (r *TradingBotRepositoryDatabase) GetTradingBotsByStatus(status entity.Stat
 			currency               string
 			tradingFees            float64
 			minimumProfitThreshold float64
+			entryPrice             float64
 			createdAt              time.Time
 		)
-		if err := rows.Scan(&botID, &symbol, &quantity, &strategyName, &strategyParams, &statusStr, &isPositioned, &intervalSeconds, &initialCapital, &tradeAmount, &currency, &tradingFees, &minimumProfitThreshold, &createdAt); err != nil {
+		if err := rows.Scan(&botID, &symbol, &quantity, &strategyName, &strategyParams, &statusStr, &isPositioned, &intervalSeconds, &initialCapital, &tradeAmount, &currency, &tradingFees, &minimumProfitThreshold, &entryPrice, &createdAt); err != nil {
 			return nil, err
 		}
 
@@ -308,6 +316,7 @@ func (r *TradingBotRepositoryDatabase) GetTradingBotsByStatus(status entity.Stat
 			currency,
 			tradingFees,
 			minimumProfitThreshold,
+			entryPrice,
 			createdAt,
 		)
 
