@@ -27,6 +27,7 @@ func validate(val string) error {
 	allowedSymbols := map[string]struct{}{
 		"BTCBRL": {},
 		"SOLBRL": {},
+		"ETHBRL": {},
 	}
 
 	if _, ok := allowedSymbols[val]; !ok {
