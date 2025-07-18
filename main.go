@@ -119,6 +119,10 @@ func main() {
 	backtestStrategyController := api.NewBacktestStrategyController(backtestStrategyUseCase, historicalDataService)
 	http.HandleFunc("/api/v1/trading/backtest", authMiddleware.RequireAuth(backtestStrategyController.Handle))
 
+	listTradingLogsUseCase := usecase.NewListTradingLogsUseCase(decisionLogRepository, tradingBotRepository)
+	tradingLogsController := api.NewTradingLogsController(listTradingLogsUseCase)
+	http.HandleFunc("/api/v1/trading/logs", authMiddleware.RequireAuth(tradingLogsController.ListLogs))
+
 	// Serve static files for dashboard
 	http.Handle("/", http.FileServer(http.Dir("./web/")))
 

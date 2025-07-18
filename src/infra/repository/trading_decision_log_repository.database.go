@@ -140,3 +140,110 @@ func (r *TradingDecisionLogRepositoryDatabase) GetByTradingBotIdWithLimit(tradin
 
 	return logs, nil
 }
+
+func (r *TradingDecisionLogRepositoryDatabase) GetRecentLogs(limit int) ([]*entity.TradingDecisionLog, error) {
+	query := `
+		SELECT id, trading_bot_id, decision, strategy_name, analysis_data, market_data, 
+		       current_price, current_possible_profit, timestamp
+		FROM trading_decision_logs 
+		ORDER BY timestamp DESC 
+		LIMIT $1
+	`
+
+	rows, err := r.db.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return r.scanRows(rows)
+}
+
+func (r *TradingDecisionLogRepositoryDatabase) GetRecentLogsByDecision(decision string, limit int) ([]*entity.TradingDecisionLog, error) {
+	query := `
+		SELECT id, trading_bot_id, decision, strategy_name, analysis_data, market_data, 
+		       current_price, current_possible_profit, timestamp
+		FROM trading_decision_logs 
+		WHERE decision = $1
+		ORDER BY timestamp DESC 
+		LIMIT $2
+	`
+
+	rows, err := r.db.Query(query, decision, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return r.scanRows(rows)
+}
+
+func (r *TradingDecisionLogRepositoryDatabase) scanRows(rows *sql.Rows) ([]*entity.TradingDecisionLog, error) {
+	var logs []*entity.TradingDecisionLog
+	for rows.Next() {
+		var (
+			id                   string
+			botId                string
+			decision             string
+			strategyName         string
+			analysisDataStr      string
+			marketDataStr        string
+			currentPrice         float64
+			currentPossibleProfit float64
+			timestamp            time.Time
+		)
+
+		if err := rows.Scan(&id, &botId, &decision, &strategyName,
+			&analysisDataStr, &marketDataStr, &currentPrice, &currentPossibleProfit, &timestamp); err != nil {
+			return nil, err
+		}
+
+		// Deserialize analysis data
+		var analysisData map[string]interface{}
+		if err := json.Unmarshal([]byte(analysisDataStr), &analysisData); err != nil {
+			return nil, err
+		}
+
+		// Deserialize market data
+		var marketData []vo.Kline
+		if err := json.Unmarshal([]byte(marketDataStr), &marketData); err != nil {
+			return nil, err
+		}
+
+		// Create entities
+		entityId, err := vo.RestoreEntityId(id)
+		if err != nil {
+			return nil, err
+		}
+
+		tradingBotId, err := vo.RestoreEntityId(botId)
+		if err != nil {
+			return nil, err
+		}
+
+		tradingDecision, err := entity.ParseTradingDecision(decision)
+		if err != nil {
+			return nil, err
+		}
+
+		log := entity.RestoreTradingDecisionLog(
+			entityId,
+			tradingBotId,
+			tradingDecision,
+			strategyName,
+			analysisData,
+			marketData,
+			currentPrice,
+			currentPossibleProfit,
+			timestamp,
+		)
+
+		logs = append(logs, log)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return logs, nil
+}

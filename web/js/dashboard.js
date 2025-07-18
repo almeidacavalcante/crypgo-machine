@@ -9,6 +9,12 @@ class Dashboard {
             status: '',
             strategy: ''
         };
+        this.logs = [];
+        this.filteredLogs = [];
+        this.logsFilters = {
+            decision: '',
+            symbol: ''
+        };
         this.autoRefreshEnabled = true;
         this.autoRefreshInterval = null;
         this.refreshIntervalMs = 30000; // 30 segundos
@@ -44,6 +50,7 @@ class Dashboard {
         
         // Carrega dados iniciais
         await this.loadData();
+        await this.loadLogs();
         
         // Inicia auto-refresh se habilitado
         this.setupAutoRefresh();
@@ -105,6 +112,28 @@ class Dashboard {
                 this.setupAutoRefresh();
             });
         }
+
+        // Logs event listeners
+        const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+        if (refreshLogsBtn) {
+            refreshLogsBtn.addEventListener('click', () => this.loadLogs());
+        }
+
+        const logsDecisionFilter = document.getElementById('logsDecisionFilter');
+        if (logsDecisionFilter) {
+            logsDecisionFilter.addEventListener('change', (e) => {
+                this.logsFilters.decision = e.target.value;
+                this.applyLogsFilters();
+            });
+        }
+
+        const logsSymbolFilter = document.getElementById('logsSymbolFilter');
+        if (logsSymbolFilter) {
+            logsSymbolFilter.addEventListener('change', (e) => {
+                this.logsFilters.symbol = e.target.value;
+                this.applyLogsFilters();
+            });
+        }
     }
 
     /**
@@ -121,6 +150,7 @@ class Dashboard {
         if (this.autoRefreshEnabled) {
             this.autoRefreshInterval = setInterval(() => {
                 this.loadData();
+                this.loadLogs();
             }, this.refreshIntervalMs);
             
             debugLog(`Auto-refresh configurado para ${this.refreshIntervalMs / 1000}s`);
@@ -327,6 +357,130 @@ class Dashboard {
             this.autoRefreshInterval = null;
         }
         debugLog('Dashboard destruído');
+    }
+
+    /**
+     * Carrega logs de trading
+     */
+    async loadLogs() {
+        debugLog('Carregando logs de trading...');
+        
+        try {
+            const result = await safeApiCall(() => apiClient.listTradingLogs(this.logsFilters.decision, 50), []);
+            
+            if (result.success && result.data) {
+                this.logs = result.data.logs || [];
+                this.applyLogsFilters();
+                debugLog(`${this.logs.length} logs carregados`);
+            } else {
+                throw new Error(result.error || 'Erro ao carregar logs');
+            }
+
+        } catch (error) {
+            console.error('Erro ao carregar logs:', error);
+            this.showEmptyLogsState();
+        }
+    }
+
+    /**
+     * Aplica filtros aos logs
+     */
+    applyLogsFilters() {
+        this.filteredLogs = this.logs.filter(log => {
+            const symbolMatch = !this.logsFilters.symbol || log.symbol === this.logsFilters.symbol;
+            const decisionMatch = !this.logsFilters.decision || log.decision === this.logsFilters.decision;
+            
+            return symbolMatch && decisionMatch;
+        });
+        
+        this.updateLogsTable();
+        debugLog(`Filtros de logs aplicados. ${this.filteredLogs.length} de ${this.logs.length} logs exibidos`);
+    }
+
+    /**
+     * Atualiza tabela de logs
+     */
+    updateLogsTable() {
+        const tableBody = document.getElementById('logsTableBody');
+        if (!tableBody) return;
+
+        // Limpa tabela
+        tableBody.innerHTML = '';
+
+        if (this.filteredLogs.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="7" class="empty-state">
+                    <div class="empty-state-icon">📊</div>
+                    <div class="empty-state-message">Nenhum log encontrado</div>
+                    <div class="empty-state-description">
+                        ${this.logs.length === 0 ? 'Nenhum log de trading disponível ainda.' : 'Tente ajustar os filtros acima.'}
+                    </div>
+                </td>
+            `;
+            tableBody.appendChild(row);
+            return;
+        }
+
+        // Preenche tabela com logs
+        this.filteredLogs.forEach(log => {
+            const row = document.createElement('tr');
+            
+            // Determina classe CSS baseada na decisão
+            const decisionClass = {
+                'BUY': 'decision-buy',
+                'SELL': 'decision-sell',
+                'HOLD': 'decision-hold'
+            }[log.decision] || '';
+
+            // Formata lucro/prejuízo
+            let profitDisplay = '-';
+            let profitClass = '';
+            if (log.profit_percentage !== null && log.profit_percentage !== undefined) {
+                const profit = log.profit_percentage;
+                profitDisplay = `${profit >= 0 ? '+' : ''}${profit.toFixed(2)}%`;
+                profitClass = profit >= 0 ? 'profit-positive' : 'profit-negative';
+            }
+
+            // Ícones para decisões
+            const decisionIcons = {
+                'BUY': '📈',
+                'SELL': '📉', 
+                'HOLD': '⏸️'
+            };
+
+            row.innerHTML = `
+                <td>${formatDateTime(log.timestamp)}</td>
+                <td class="symbol">${log.symbol || '-'}</td>
+                <td class="decision ${decisionClass}">
+                    ${decisionIcons[log.decision] || ''} ${log.decision}
+                </td>
+                <td class="price">${formatCurrency(log.current_price)}</td>
+                <td class="price">${log.entry_price ? formatCurrency(log.entry_price) : '-'}</td>
+                <td class="profit ${profitClass}">${profitDisplay}</td>
+                <td class="strategy">${log.strategy_name}</td>
+            `;
+
+            tableBody.appendChild(row);
+        });
+    }
+
+    /**
+     * Mostra estado vazio para logs
+     */
+    showEmptyLogsState() {
+        const tableBody = document.getElementById('logsTableBody');
+        if (!tableBody) return;
+
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="empty-state error">
+                    <div class="empty-state-icon">⚠️</div>
+                    <div class="empty-state-message">Erro ao carregar logs</div>
+                    <div class="empty-state-description">Tente atualizar a página ou entre em contato com o suporte.</div>
+                </td>
+            </tr>
+        `;
     }
 }
 

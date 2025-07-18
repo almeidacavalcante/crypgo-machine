@@ -124,6 +124,48 @@
                     </table>
                 </div>
             </section>
+
+            <!-- Logs de Trading -->
+            <section class="logs-section">
+                <div class="logs-header">
+                    <h2>📊 Logs de Trading Recentes</h2>
+                    <div class="logs-controls">
+                        <select id="logsDecisionFilter" class="logs-filter">
+                            <option value="">Todas as Decisões</option>
+                            <option value="BUY">📈 Compra</option>
+                            <option value="SELL">📉 Venda</option>
+                            <option value="HOLD">⏸️ Manter</option>
+                        </select>
+                        <select id="logsSymbolFilter" class="logs-filter">
+                            <option value="">Todos os Símbolos</option>
+                            <option value="BTCBRL">BTCBRL</option>
+                            <option value="ETHBRL">ETHBRL</option>
+                            <option value="SOLBRL">SOLBRL</option>
+                        </select>
+                        <button id="refreshLogsBtn" class="refresh-btn">🔄</button>
+                    </div>
+                </div>
+                <div class="logs-container">
+                    <table class="logs-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Símbolo</th>
+                                <th>Decisão</th>
+                                <th>Preço Atual</th>
+                                <th>Preço Entrada</th>
+                                <th>Lucro/Prejuízo</th>
+                                <th>Estratégia</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTableBody">
+                            <tr>
+                                <td colspan="7" class="loading">Carregando logs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </main>
 
         <footer class="footer">

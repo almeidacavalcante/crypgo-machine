@@ -127,6 +127,17 @@ class ApiClient {
     async getBotLogs(botId, limit = 10) {
         return await this.request(`/trading/bot/${botId}/logs?limit=${limit}`);
     }
+
+    /**
+     * Lista logs de trading
+     */
+    async listTradingLogs(decision = '', limit = 50) {
+        let url = `/trading/logs?limit=${limit}`;
+        if (decision) {
+            url += `&decision=${decision}`;
+        }
+        return this.request(url);
+    }
 }
 
 // Instância global do cliente API
