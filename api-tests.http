@@ -73,6 +73,28 @@ Content-Type: application/json
 }
 
 ###
+### 2b. Criar bot com intervalo de 15 minutos (900s)
+POST {{baseUrl}}/api/v1/trading/create_trading_bot
+Content-Type: application/json
+
+{
+  "symbol": "ETHBRL",
+  "quantity": 0.01,
+  "strategy": "MovingAverage",
+  "params": {
+    "FastWindow": 3,
+    "SlowWindow": 10
+  },
+  "interval_seconds": 900,
+  "initial_capital": 1000.0,
+  "trade_amount": 200.0,
+  "currency": "BRL",
+  "trading_fees": 0.01,
+  "minimum_profit_threshold": 3.0
+}
+
+
+###
 ### 2c. Criar bot com intervalo de 1 hora (3600s)
 POST {{baseUrl}}/api/v1/trading/create_trading_bot
 Content-Type: application/json
