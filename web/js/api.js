@@ -9,20 +9,26 @@ class ApiClient {
     }
 
     /**
-     * Faz requisição HTTP genérica
+     * Faz requisição HTTP genérica com autenticação JWT
      */
     async request(endpoint, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
         
-        const config = {
-            headers: this.headers,
-            ...options
-        };
-
         try {
-            debugLog(`API Request: ${config.method || 'GET'} ${url}`);
+            let response;
             
-            const response = await fetch(url, config);
+            // Use Auth.apiRequest for authenticated requests
+            if (window.Auth && Auth.isAuthenticated()) {
+                debugLog(`Authenticated API Request: ${options.method || 'GET'} ${url}`);
+                response = await Auth.apiRequest(url, options);
+            } else {
+                debugLog(`Public API Request: ${options.method || 'GET'} ${url}`);
+                const config = {
+                    headers: this.headers,
+                    ...options
+                };
+                response = await fetch(url, config);
+            }
             
             debugLog(`API Response: ${response.status} ${response.statusText}`);
             

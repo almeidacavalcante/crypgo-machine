@@ -5,8 +5,10 @@ import (
 	"crypgo-machine/src/application/usecase"
 	"crypgo-machine/src/domain/entity"
 	"crypgo-machine/src/infra/api"
+	"crypgo-machine/src/infra/auth"
 	"crypgo-machine/src/infra/database"
 	"crypgo-machine/src/infra/external"
+	"crypgo-machine/src/infra/middleware"
 	"crypgo-machine/src/infra/notification"
 	"crypgo-machine/src/infra/queue"
 	infraRepository "crypgo-machine/src/infra/repository"
@@ -63,18 +65,38 @@ func main() {
 		}
 	}()
 
+	// Authentication setup
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "crypgo-super-secret-key-2024-production" // fallback - change in production
+	}
+	
+	validEmail := "jalmeidacn@gmail.com"
+	validPassword := "CrypGo2024#StrongPass!" // Strong password
+	
+	jwtService := auth.NewJWTService(jwtSecret, "crypgo-machine")
+	authUseCase := usecase.NewAuthUseCase(jwtService, validEmail, validPassword)
+	authController := api.NewAuthController(authUseCase)
+	authMiddleware := middleware.NewAuthMiddleware(authUseCase)
+
+	// Public auth routes
+	http.HandleFunc("/api/v1/auth/login", authController.Login)
+	http.HandleFunc("/api/v1/auth/refresh", authController.RefreshToken)
+	http.HandleFunc("/api/v1/auth/validate", authController.ValidateToken)
+
+	// Protected trading routes
 	createTradingBotUseCase := usecase.NewCreateTradingBotUseCase(tradingBotRepository, *client, rabbit, "trading_bot")
 	createTradingBotController := api.NewCreateTradingBotController(createTradingBotUseCase)
-	http.HandleFunc("/api/v1/trading/create_trading_bot", createTradingBotController.Handle)
+	http.HandleFunc("/api/v1/trading/create_trading_bot", authMiddleware.RequireAuth(createTradingBotController.Handle))
 
 	listAllTradingBotsUseCase := usecase.NewListAllTradingBotsUseCase(tradingBotRepository)
 	listAllTradingBotsController := api.NewListAllTradingBotsController(listAllTradingBotsUseCase)
-	http.HandleFunc("/api/v1/trading/list", listAllTradingBotsController.Handle)
+	http.HandleFunc("/api/v1/trading/list", authMiddleware.RequireAuth(listAllTradingBotsController.Handle))
 
 	binanceWrapper := external.NewBinanceClientWrapper(client)
 	startTradingBotUseCase := usecase.NewStartTradingBotUseCaseWithMessaging(tradingBotRepository, decisionLogRepository, binanceWrapper, rabbit, "trading_bot")
 	startTradingBotController := api.NewStartTradingBotController(startTradingBotUseCase)
-	http.HandleFunc("/api/v1/trading/start", startTradingBotController.Handle)
+	http.HandleFunc("/api/v1/trading/start", authMiddleware.RequireAuth(startTradingBotController.Handle))
 
 	// Auto-recovery: restart all running bots after server restart
 	fmt.Println("🔧 About to start auto-recovery...")
@@ -86,12 +108,12 @@ func main() {
 
 	stopTradingBotUseCase := usecase.NewStopTradingBotUseCase(tradingBotRepository)
 	stopTradingBotController := api.NewStopTradingBotController(stopTradingBotUseCase)
-	http.HandleFunc("/api/v1/trading/stop", stopTradingBotController.Handle)
+	http.HandleFunc("/api/v1/trading/stop", authMiddleware.RequireAuth(stopTradingBotController.Handle))
 
 	backtestStrategyUseCase := usecase.NewBacktestStrategyUseCase()
 	historicalDataService := external.NewBinanceHistoricalDataService(binanceWrapper)
 	backtestStrategyController := api.NewBacktestStrategyController(backtestStrategyUseCase, historicalDataService)
-	http.HandleFunc("/api/v1/trading/backtest", backtestStrategyController.Handle)
+	http.HandleFunc("/api/v1/trading/backtest", authMiddleware.RequireAuth(backtestStrategyController.Handle))
 
 	// Serve static files for dashboard
 	http.Handle("/", http.FileServer(http.Dir("./web/")))

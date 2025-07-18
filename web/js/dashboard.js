@@ -22,6 +22,20 @@ class Dashboard {
     async init() {
         debugLog('Inicializando dashboard...');
         
+        // Verifica autenticação primeiro
+        if (!Auth.requireAuth()) {
+            return;
+        }
+        
+        // Configura email do usuário no header
+        const userEmail = Auth.getUserEmail();
+        if (userEmail) {
+            const userEmailElement = document.getElementById('userEmail');
+            if (userEmailElement) {
+                userEmailElement.textContent = userEmail;
+            }
+        }
+        
         // Configura event listeners
         this.setupEventListeners();
         
@@ -45,6 +59,16 @@ class Dashboard {
         const refreshBtn = document.getElementById('refreshBtn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => this.loadData());
+        }
+
+        // Botão de logout
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                if (confirm('Tem certeza que deseja sair?')) {
+                    Auth.logout();
+                }
+            });
         }
 
         // Filtros

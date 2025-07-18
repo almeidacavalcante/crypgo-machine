@@ -11,9 +11,15 @@
     <div class="container">
         <header class="header">
             <h1>CrypGo Machine Dashboard</h1>
-            <div class="status-indicator">
-                <span class="status-dot" id="connectionStatus"></span>
-                <span id="lastUpdate">Carregando...</span>
+            <div class="header-controls">
+                <div class="user-info">
+                    <span id="userEmail">Carregando...</span>
+                    <button id="logoutBtn" class="logout-btn">Sair</button>
+                </div>
+                <div class="status-indicator">
+                    <span class="status-dot" id="connectionStatus"></span>
+                    <span id="lastUpdate">Carregando...</span>
+                </div>
             </div>
         </header>
 
@@ -125,6 +131,7 @@
         </footer>
     </div>
 
+    <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/api.js"></script>
     <script src="js/dashboard.js"></script>

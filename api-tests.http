@@ -14,7 +14,32 @@
 
 ### 📊 VARIÁVEIS ÚTEIS PARA TESTES
 ### Substitua pelos IDs reais dos bots após criá-los:
-@BOT = ae00a0fa-1bb7-4d71-bb56-917f540c29a1
+#@BOT = 1eb8b9bf-438c-4d38-b1cb-c96f305a1425
+#@BOT = ae00a0fa-1bb7-4d71-bb56-917f540c29a1
+@BOT = d96cdc80-4057-4d29-a5a9-935bc22bef64
+
+### ========================================
+### 🎮 CONTROLE DE TRADING BOTS
+### ========================================
+
+###
+### 4. Iniciar trading bot
+POST {{baseUrl}}/api/v1/trading/start
+Content-Type: application/json
+
+{
+  "bot_id": "{{BOT}}"
+}
+
+###
+### 5b. Exemplo: Parar bot específico usando ID de produção (descomente para usar)
+POST {{baseUrl}}/api/v1/trading/stop
+Content-Type: application/json
+
+ {
+   "bot_id": "{{BOT}}"
+ }
+
 
 ### 🏭 IDs DOS BOTS EM PRODUÇÃO (para referência):
 ### @botIdProdSOL1 = 1b6f580e-908b-42eb-be78-9b982b91e192
@@ -136,27 +161,7 @@ Content-Type: application/json
   "minimum_profit_threshold": 2.5
 }
 
-### ========================================
-### 🎮 CONTROLE DE TRADING BOTS
-### ========================================
 
-###
-### 4. Iniciar trading bot
-POST {{baseUrl}}/api/v1/trading/start
-Content-Type: application/json
-
-{
-  "bot_id": "{{BOT}}"
-}
-
-###
-### 5b. Exemplo: Parar bot específico usando ID de produção (descomente para usar)
-POST {{baseUrl}}/api/v1/trading/stop
-Content-Type: application/json
-
- {
-   "bot_id": "{{BOT}}"
- }
 
 ### ========================================
 ### 📊 BACKTESTING E OTIMIZAÇÃO  
