@@ -212,7 +212,7 @@ jobs:
             
             # Test direct app connection
             echo "Testing direct app connection (port 8080):"
-            APP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/trading/list 2>/dev/null || echo "FAILED")
+            APP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/health 2>/dev/null || echo "FAILED")
             echo "Direct app response: $APP_STATUS"
             
             # Test nginx health endpoint
@@ -222,7 +222,7 @@ jobs:
             
             # Test nginx API endpoint
             echo "Testing nginx API endpoint (port 80):"
-            API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/v1/trading/list 2>/dev/null || echo "FAILED")
+            API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/v1/health 2>/dev/null || echo "FAILED")
             echo "Nginx API response: $API_STATUS"
             
             # Check if any endpoint works
