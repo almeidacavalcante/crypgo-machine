@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Dashboard</title>
+</head>
+<body>
+    <h1>Teste de Conectividade</h1>
+    <div id="result"></div>
+    
+    <script>
+        // Teste simples da API
+        fetch('/api/v1/trading/list')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('result').innerHTML = `
+                    <h2>API Funcionando!</h2>
+                    <p>Total de bots: ${data.length}</p>
+                    <p>Primeiro bot: ${data[0] ? data[0].symbol : 'Nenhum'}</p>
+                `;
+            })
+            .catch(error => {
+                document.getElementById('result').innerHTML = `
+                    <h2 style="color: red;">Erro na API!</h2>
+                    <p>${error.message}</p>
+                `;
+            });
+    </script>
+</body>
+</html>

@@ -37,6 +37,9 @@ COPY --from=builder /app/crypgo-machine .
 # Copiar arquivos de configuração
 COPY --from=builder /app/.env.production .env
 
+# Copiar arquivos do dashboard web
+COPY --from=builder /app/web ./web
+
 # Dar permissões apropriadas
 RUN chown -R crypgo:crypgo /app
 USER crypgo

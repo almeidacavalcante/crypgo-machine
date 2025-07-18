@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrypGo Machine - Dashboard</title>
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>CrypGo Machine Dashboard</h1>
+            <div class="status-indicator">
+                <span class="status-dot" id="connectionStatus"></span>
+                <span id="lastUpdate">Carregando...</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Cards de Métricas -->
+            <section class="metrics-section">
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-icon">🤖</div>
+                        <div class="metric-content">
+                            <h3>Total de Bots</h3>
+                            <p class="metric-value" id="totalBots">-</p>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon">▶️</div>
+                        <div class="metric-content">
+                            <h3>Bots Ativos</h3>
+                            <p class="metric-value" id="activeBots">-</p>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon">💼</div>
+                        <div class="metric-content">
+                            <h3>Bots em Posição</h3>
+                            <p class="metric-value" id="positionedBots">-</p>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon">💰</div>
+                        <div class="metric-content">
+                            <h3>Capital Total</h3>
+                            <p class="metric-value" id="totalCapital">-</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Controles e Filtros -->
+            <section class="controls-section">
+                <div class="controls-grid">
+                    <div class="filter-group">
+                        <label for="symbolFilter">Símbolo:</label>
+                        <select id="symbolFilter">
+                            <option value="">Todos</option>
+                            <option value="BTCBRL">BTCBRL</option>
+                            <option value="SOLBRL">SOLBRL</option>
+                            <option value="ETHBRL">ETHBRL</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="statusFilter">Status:</label>
+                        <select id="statusFilter">
+                            <option value="">Todos</option>
+                            <option value="RUNNING">Rodando</option>
+                            <option value="STOPPED">Parado</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="strategyFilter">Estratégia:</label>
+                        <select id="strategyFilter">
+                            <option value="">Todas</option>
+                            <option value="MovingAverage">Média Móvel</option>
+                        </select>
+                    </div>
+                    <div class="auto-refresh">
+                        <label>
+                            <input type="checkbox" id="autoRefresh" checked>
+                            Atualização Automática (30s)
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tabela de Bots -->
+            <section class="table-section">
+                <div class="table-header">
+                    <h2>Trading Bots</h2>
+                    <button id="refreshBtn" class="refresh-btn">🔄 Atualizar</button>
+                </div>
+                <div class="table-container">
+                    <table class="bots-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Símbolo</th>
+                                <th>Status</th>
+                                <th>Posição</th>
+                                <th>Estratégia</th>
+                                <th>Capital Inicial</th>
+                                <th>Valor por Trade</th>
+                                <th>Preço de Entrada</th>
+                                <th>Profit Threshold</th>
+                                <th>Criado em</th>
+                            </tr>
+                        </thead>
+                        <tbody id="botsTableBody">
+                            <tr>
+                                <td colspan="10" class="loading">Carregando bots...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 CrypGo Machine - Dashboard de Monitoramento</p>
+        </footer>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

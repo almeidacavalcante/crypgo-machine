@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Debug Dashboard - Dados do Banco</h1>
+    
+    <div class="debug">
+        <h3>1. Teste de Conectividade API</h3>
+        <div id="apiTest">Testando...</div>
+    </div>
+    
+    <div class="debug">
+        <h3>2. Dados Brutos dos Bots</h3>
+        <div id="rawData">Carregando...</div>
+    </div>
+    
+    <div class="debug">
+        <h3>3. Métricas Calculadas</h3>
+        <div id="metrics">Calculando...</div>
+    </div>
+    
+    <script>
+        async function debugDashboard() {
+            try {
+                // Teste 1: Conectividade
+                const response = await fetch('/api/v1/trading/list');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                document.getElementById('apiTest').innerHTML = 
+                    '<span class="success">✅ API respondendo normalmente</span>';
+                
+                // Teste 2: Dados brutos
+                const bots = await response.json();
+                document.getElementById('rawData').innerHTML = `
+                    <div class="success">✅ ${bots.length} bots encontrados no banco:</div>
+                    <ul>
+                        ${bots.map(bot => `
+                            <li><strong>${bot.symbol}</strong> (${bot.id.substring(0,8)}...) - 
+                                Status: ${bot.status}, 
+                                Capital: R$ ${bot.initial_capital}, 
+                                Posicionado: ${bot.is_positioned ? 'Sim' : 'Não'}
+                            </li>
+                        `).join('')}
+                    </ul>
+                `;
+                
+                // Teste 3: Métricas
+                const totalBots = bots.length;
+                const activeBots = bots.filter(bot => bot.status === 'RUNNING').length;
+                const positionedBots = bots.filter(bot => bot.is_positioned).length;
+                const totalCapital = bots.reduce((sum, bot) => sum + bot.initial_capital, 0);
+                
+                document.getElementById('metrics').innerHTML = `
+                    <div class="success">✅ Métricas calculadas:</div>
+                    <ul>
+                        <li>Total de Bots: ${totalBots}</li>
+                        <li>Bots Ativos: ${activeBots}</li>
+                        <li>Bots em Posição: ${positionedBots}</li>
+                        <li>Capital Total: R$ ${totalCapital.toLocaleString('pt-BR')}</li>
+                    </ul>
+                `;
+                
+            } catch (error) {
+                document.getElementById('apiTest').innerHTML = 
+                    `<span class="error">❌ Erro: ${error.message}</span>`;
+                document.getElementById('rawData').innerHTML = 
+                    `<span class="error">❌ Falha ao carregar dados</span>`;
+                document.getElementById('metrics').innerHTML = 
+                    `<span class="error">❌ Impossível calcular métricas</span>`;
+            }
+        }
+        
+        // Executa debug
+        debugDashboard();
+    </script>
+</body>
+</html>

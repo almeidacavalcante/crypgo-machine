@@ -93,6 +93,9 @@ func main() {
 	backtestStrategyController := api.NewBacktestStrategyController(backtestStrategyUseCase, historicalDataService)
 	http.HandleFunc("/api/v1/trading/backtest", backtestStrategyController.Handle)
 
+	// Serve static files for dashboard
+	http.Handle("/", http.FileServer(http.Dir("./web/")))
+
 	fmt.Println("🚀 Listening on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("❌ Error starting server: %v", err)
