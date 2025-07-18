@@ -79,6 +79,10 @@ func main() {
 	authController := api.NewAuthController(authUseCase)
 	authMiddleware := middleware.NewAuthMiddleware(authUseCase)
 
+	// Public routes
+	healthController := api.NewHealthController()
+	http.HandleFunc("/api/v1/health", healthController.Health)
+	
 	// Public auth routes
 	http.HandleFunc("/api/v1/auth/login", authController.Login)
 	http.HandleFunc("/api/v1/auth/refresh", authController.RefreshToken)
