@@ -32,6 +32,7 @@ type TradingBotDTO struct {
 	StrategyParams         interface{} `json:"strategy_params"`
 	Status                 string      `json:"status"`
 	IsPositioned           bool        `json:"is_positioned"`
+	EntryPrice             *float64    `json:"entry_price"`
 	IntervalSeconds        int         `json:"interval_seconds"`
 	InitialCapital         float64     `json:"initial_capital"`
 	TradeAmount            float64     `json:"trade_amount"`
@@ -42,6 +43,11 @@ type TradingBotDTO struct {
 }
 
 func (b *TradingBot) ToDTO() TradingBotDTO {
+	var entryPrice *float64
+	if b.entryPrice > 0 {
+		entryPrice = &b.entryPrice
+	}
+	
 	return TradingBotDTO{
 		Id:                     string(b.Id.GetValue()),
 		Symbol:                 string(b.symbol.GetValue()),
@@ -50,6 +56,7 @@ func (b *TradingBot) ToDTO() TradingBotDTO {
 		StrategyParams:         b.strategy.GetParams(),
 		Status:                 string(b.status),
 		IsPositioned:           b.isPositioned,
+		EntryPrice:             entryPrice,
 		IntervalSeconds:        b.intervalSeconds,
 		InitialCapital:         b.initialCapital,
 		TradeAmount:            b.tradeAmount,
