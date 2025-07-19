@@ -49,7 +49,7 @@ func (uc *ApproveSentimentSuggestionUseCase) Execute(input ApproveSentimentSugge
 	}
 	
 	// Find suggestion
-	suggestionId, err := vo.NewEntityIdFromString(input.SuggestionId)
+	suggestionId, err := vo.RestoreEntityId(input.SuggestionId)
 	if err != nil {
 		return nil, fmt.Errorf("invalid suggestion ID: %w", err)
 	}
@@ -180,7 +180,7 @@ func (uc *ApproveSentimentSuggestionUseCase) applyToBots(input ApproveSentimentS
 	
 	if input.ApplyToAllBots {
 		// Get all active bots
-		bots, err := uc.botRepo.FindByStatus("running")
+		bots, err := uc.botRepo.GetTradingBotsByStatus(entity.StatusRunning)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to fetch active bots: %w", err)
 		}
@@ -194,12 +194,12 @@ func (uc *ApproveSentimentSuggestionUseCase) applyToBots(input ApproveSentimentS
 	} else if len(input.ApplyToBots) > 0 {
 		// Apply to specific bots
 		for _, botId := range input.ApplyToBots {
-			botEntityId, err := vo.NewEntityIdFromString(botId)
+			botEntityId, err := vo.RestoreEntityId(botId)
 			if err != nil {
 				continue // Skip invalid IDs
 			}
 			
-			_, err = uc.botRepo.FindById(botEntityId)
+			_, err = uc.botRepo.GetTradeByID(botEntityId.GetValue())
 			if err != nil {
 				continue // Skip bots that don't exist
 			}

@@ -276,27 +276,49 @@ func (r *SentimentSuggestionRepositoryDatabase) scanSuggestion(scanner interface
 	}
 	
 	// Reconstruct value objects and entities
-	entityId, err := vo.NewEntityIdFromString(id)
+	entityId, err := vo.RestoreEntityId(id)
 	if err != nil {
 		return nil, err
 	}
 	
-	sentimentLevel, err := vo.NewSentimentLevel(level)
-	if err != nil {
-		return nil, err
-	}
-	
+	// Create sentiment sources for entity reconstruction
 	sources, err := vo.NewSentimentSources(fearGreedIndex, newsScore, redditScore, socialScore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to reconstruct sentiment sources: %w", err)
 	}
 	
-	// This is a simplified reconstruction - in a real implementation,
-	// you'd need to properly reconstruct the full entity with all its business logic
-	// For now, we'll return a basic structure that can be used for display
+	suggestion, err := entity.NewSentimentSuggestion(sources, reasoning, confidence)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reconstruct sentiment suggestion: %w", err)
+	}
 	
-	// Note: This is a simplified approach. In a production system, you might want to
-	// add a factory method or reconstruction method to the entity itself.
+	// Manually set the ID and status for reconstructed entity
+	suggestion.SetIdForReconstruction(entityId)
+	suggestion.SetStatusForReconstruction(entity.SuggestionStatus(status))
+	var respondedAtPtr *time.Time
+	if respondedAt.Valid {
+		respondedAtPtr = &respondedAt.Time
+	}
+	suggestion.SetTimestampsForReconstruction(createdAt, respondedAtPtr)
 	
-	return nil, fmt.Errorf("sentiment suggestion reconstruction not fully implemented - this would require more complex entity restoration logic")
+	if userNotes.Valid {
+		suggestion.SetUserNotesForReconstruction(userNotes.String)
+	}
+	
+	// Set applied values if they exist
+	var multiplier, threshold *float64
+	var interval *int
+	if appliedMultiplier.Valid {
+		multiplier = &appliedMultiplier.Float64
+	}
+	if appliedThreshold.Valid {
+		threshold = &appliedThreshold.Float64
+	}
+	if appliedInterval.Valid {
+		val := int(appliedInterval.Int64)
+		interval = &val
+	}
+	suggestion.SetAppliedValuesForReconstruction(multiplier, threshold, interval)
+	
+	return suggestion, nil
 }

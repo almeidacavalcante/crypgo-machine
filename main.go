@@ -8,6 +8,7 @@ import (
 	"crypgo-machine/src/infra/auth"
 	"crypgo-machine/src/infra/database"
 	"crypgo-machine/src/infra/external"
+	"crypgo-machine/src/infra/http/controller"
 	"crypgo-machine/src/infra/middleware"
 	"crypgo-machine/src/infra/notification"
 	"crypgo-machine/src/infra/queue"
@@ -62,6 +63,18 @@ func main() {
 			log.Fatalf("❌ Error starting email notification consumer: %v", err)
 		} else {
 			fmt.Println("✅ Email notification consumer started successfully.")
+		}
+	}()
+
+	// Telegram service setup
+	telegramService := notification.NewTelegramService()
+	telegramConsumer := notification.NewTelegramNotificationConsumer(rabbit, "trading_bot", "telegram.notification.queue", telegramService)
+	go func() {
+		err := telegramConsumer.Start()
+		if err != nil {
+			log.Printf("❌ Error starting Telegram notification consumer: %v", err)
+		} else {
+			fmt.Println("✅ Telegram notification consumer started successfully.")
 		}
 	}()
 
@@ -122,6 +135,25 @@ func main() {
 	listTradingLogsUseCase := usecase.NewListTradingLogsUseCase(decisionLogRepository, tradingBotRepository)
 	tradingLogsController := api.NewTradingLogsController(listTradingLogsUseCase)
 	http.HandleFunc("/api/v1/trading/logs", authMiddleware.RequireAuth(tradingLogsController.ListLogs))
+
+	// Sentiment Analysis System
+	sentimentSuggestionRepository := infraRepository.NewSentimentSuggestionRepositoryDatabase(dbConnection.DB)
+	generateSentimentUseCase := usecase.NewGenerateSentimentSuggestionUseCase(sentimentSuggestionRepository)
+	listSentimentUseCase := usecase.NewListSentimentSuggestionsUseCase(sentimentSuggestionRepository)
+	approveSentimentUseCase := usecase.NewApproveSentimentSuggestionUseCase(sentimentSuggestionRepository, tradingBotRepository)
+	sentimentController := controller.NewSentimentController(generateSentimentUseCase, listSentimentUseCase, approveSentimentUseCase)
+	
+	// Sentiment API endpoints
+	http.HandleFunc("/api/v1/sentiment/generate", authMiddleware.RequireAuth(sentimentController.GenerateSuggestion))
+	http.HandleFunc("/api/v1/sentiment/suggestions", authMiddleware.RequireAuth(sentimentController.ListSuggestions))
+	http.HandleFunc("/api/v1/sentiment/approve", authMiddleware.RequireAuth(sentimentController.ApproveSuggestion))
+	http.HandleFunc("/api/v1/sentiment/analytics", authMiddleware.RequireAuth(sentimentController.GetAnalytics))
+	http.HandleFunc("/api/v1/sentiment/health", sentimentController.HealthCheck) // Public health check
+
+	// Telegram test endpoints
+	telegramTestController := api.NewTelegramTestController(telegramService)
+	http.HandleFunc("/api/v1/telegram/test", telegramTestController.SendOi) // Temporary public for demo
+	http.HandleFunc("/api/v1/telegram/status", telegramTestController.Status) // Public status check
 
 	// Serve static files for dashboard
 	http.Handle("/", http.FileServer(http.Dir("./web/")))

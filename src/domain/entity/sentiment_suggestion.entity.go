@@ -240,3 +240,30 @@ func (s *SentimentSuggestion) GetAppliedValues() (multiplier, threshold float64,
 	
 	return *s.appliedMultiplier, *s.appliedThreshold, *s.appliedInterval, true
 }
+
+// Repository reconstruction helpers
+// These methods are used exclusively by the repository layer to reconstruct entities from the database
+// They should NOT be used in normal business logic
+
+func (s *SentimentSuggestion) SetIdForReconstruction(id *vo.EntityId) {
+	s.id = id
+}
+
+func (s *SentimentSuggestion) SetStatusForReconstruction(status SuggestionStatus) {
+	s.status = status
+}
+
+func (s *SentimentSuggestion) SetUserNotesForReconstruction(notes string) {
+	s.userNotes = notes
+}
+
+func (s *SentimentSuggestion) SetTimestampsForReconstruction(createdAt time.Time, respondedAt *time.Time) {
+	s.createdAt = createdAt
+	s.respondedAt = respondedAt
+}
+
+func (s *SentimentSuggestion) SetAppliedValuesForReconstruction(multiplier, threshold *float64, interval *int) {
+	s.appliedMultiplier = multiplier
+	s.appliedThreshold = threshold
+	s.appliedInterval = interval
+}

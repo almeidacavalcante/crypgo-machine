@@ -2,21 +2,60 @@
 ### Execute cada request individualmente no GoLand (clique no ícone ▶️)
 ###
 ### 📖 INSTRUÇÕES DE USO:
-### 1. Para testar em LOCALHOST: mantenha @baseUrl = http://localhost:8080  
-### 2. Para testar em PRODUÇÃO: descomente # @baseUrl = http://31.97.249.4
-### 3. Após criar bots, copie os IDs e substitua as variáveis @BOT/@botIdBTCBRL
+### 1. Configure http-client.env.json com suas credenciais
+### 2. Execute PRIMEIRO o endpoint de LOGIN para obter o token
+### 3. Copie o access_token retornado e cole na variável @authToken
 ### 4. Use Ctrl+Alt+R no GoLand para executar requests rapidamente
 
 ### 🔧 CONFIGURAÇÃO DE AMBIENTE
-### Descomente a linha desejada para trocar entre localhost e produção:
-#@baseUrl = http://localhost:8080
-@baseUrl = http://31.97.249.4
+### Usar variáveis do http-client.env.json:
+@baseUrl = {{baseUrl}}
+@email = {{email}}
+@password = {{password}}
+@authToken = {{authToken}}
 
 ### 📊 VARIÁVEIS ÚTEIS PARA TESTES
 ### Substitua pelos IDs reais dos bots após criá-los:
 #@BOT = 1eb8b9bf-438c-4d38-b1cb-c96f305a1425
 #@BOT = ae00a0fa-1bb7-4d71-bb56-917f540c29a1
 @BOT = d96cdc80-4057-4d29-a5a9-935bc22bef64
+
+### ========================================
+### 🔐 AUTENTICAÇÃO (EXECUTE PRIMEIRO!)
+### ========================================
+
+###
+### 1. Login - Execute PRIMEIRO para obter o token
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+### 2. Validar token (opcional)
+GET {{baseUrl}}/api/v1/auth/validate
+Authorization: Bearer {{authToken}}
+
+###
+### 3. Refresh token (opcional)  
+POST {{baseUrl}}/api/v1/auth/refresh
+Authorization: Bearer {{authToken}}
+
+### ========================================
+### 📱 TELEGRAM BOT TESTS
+### ========================================
+
+###
+### 1. Status do Telegram (público)
+GET {{baseUrl}}/api/v1/telegram/status
+
+###
+### 2. Enviar mensagem "OI" 
+GET {{baseUrl}}/api/v1/telegram/test
+Authorization: Bearer {{authToken}}
 
 ### ========================================
 ### 🎮 CONTROLE DE TRADING BOTS
@@ -26,6 +65,7 @@
 ### 4. Iniciar trading bot
 POST {{baseUrl}}/api/v1/trading/start
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "bot_id": "{{BOT}}"
@@ -35,6 +75,7 @@ Content-Type: application/json
 ### 5b. Exemplo: Parar bot específico usando ID de produção (descomente para usar)
 POST {{baseUrl}}/api/v1/trading/stop
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
  {
    "bot_id": "{{BOT}}"
@@ -54,11 +95,13 @@ Content-Type: application/json
 ### 1. Listar todos os trading bots
 GET {{baseUrl}}/api/v1/trading/list
 Accept: application/json
+Authorization: Bearer {{authToken}}
 
 ###
 ### 2. Criar um novo trading bot (configuração campeã)
 POST {{baseUrl}}/api/v1/trading/create_trading_bot
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "symbol": "SOLBRL",
@@ -80,6 +123,7 @@ Content-Type: application/json
 ### 2b. Criar bot com intervalo de 15 minutos (900s)
 POST {{baseUrl}}/api/v1/trading/create_trading_bot
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "symbol": "BTCBRL",
@@ -101,6 +145,7 @@ Content-Type: application/json
 ### 2b. Criar bot com intervalo de 15 minutos (900s)
 POST {{baseUrl}}/api/v1/trading/create_trading_bot
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "symbol": "ETHBRL",
@@ -123,6 +168,7 @@ Content-Type: application/json
 ### 2c. Criar bot com intervalo de 1 hora (3600s)
 POST {{baseUrl}}/api/v1/trading/create_trading_bot
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "symbol": "SOLBRL",
@@ -144,6 +190,7 @@ Content-Type: application/json
 ### 3. Criar trading bot com BTCBRL
 POST {{baseUrl}}/api/v1/trading/create_trading_bot
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "symbol": "BTCBRL",
@@ -171,6 +218,7 @@ Content-Type: application/json
 ### 6. Backtest com dados históricos reais
 POST {{baseUrl}}/api/v1/trading/backtest
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "strategy_name": "MovingAverage",
@@ -195,6 +243,7 @@ Content-Type: application/json
 ### 7. Backtest com configuração conservadora
 POST {{baseUrl}}/api/v1/trading/backtest
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "strategy_name": "MovingAverage",
@@ -223,6 +272,7 @@ Content-Type: application/json
 ### 8. Teste de validação - Symbol inválido (deve retornar erro)
 POST {{baseUrl}}/api/v1/trading/create_trading_bot
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "symbol": "INVALID",
@@ -244,6 +294,7 @@ Content-Type: application/json
 ### 9. Teste de validação - Parâmetros inválidos (deve retornar erro)
 POST {{baseUrl}}/api/v1/trading/create_trading_bot
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "symbol": "SOLBRL",
@@ -265,6 +316,7 @@ Content-Type: application/json
 ### 10. Teste de bot inexistente (deve retornar erro)
 POST {{baseUrl}}/api/v1/trading/start
 Content-Type: application/json
+Authorization: Bearer {{authToken}}
 
 {
   "bot_id": "00000000-0000-0000-0000-000000000000"
