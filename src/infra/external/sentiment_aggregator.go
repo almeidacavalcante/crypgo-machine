@@ -84,14 +84,17 @@ func (s *SentimentAggregator) CollectAndAnalyze() (*AggregatedSentiment, error) 
 		return nil, fmt.Errorf("failed to fetch RSS news: %w", err)
 	}
 	
+	// Optimize article count for LLM processing
+	optimizedNews := s.optimizeArticlesForLLM(recentNews)
+	
 	// Choose analysis method based on configuration
 	var newsAnalysis NewsAnalysisResult
 	var enhancedAnalysis *EnhancedNewsAnalysisResult
 	var processingMethod, analysisQuality string
 	
 	if s.useLLM && s.llmAnalyzer != nil {
-		fmt.Printf("🧠 Analyzing %d articles with LLM...\n", len(recentNews))
-		enhanced := s.llmAnalyzer.AnalyzeNews(recentNews)
+		fmt.Printf("🧠 Analyzing %d articles with LLM (optimized from %d)...\n", len(optimizedNews), len(recentNews))
+		enhanced := s.llmAnalyzer.AnalyzeNews(optimizedNews)
 		enhancedAnalysis = &enhanced
 		processingMethod = enhanced.ProcessingMethod
 		analysisQuality = enhanced.AnalysisQuality
@@ -392,4 +395,69 @@ func (s *SentimentAggregator) generateEnhancedReasoning(
 	}
 	
 	return reasoning
+}
+// optimizeArticlesForLLM reduces and prioritizes articles for efficient LLM processing
+func (s *SentimentAggregator) optimizeArticlesForLLM(articles []NewsItem) []NewsItem {
+	if len(articles) <= 10 {
+		return articles // Already optimal
+	}
+	
+	// Priority scoring: newer articles and important sources get higher scores
+	type articleScore struct {
+		article NewsItem
+		score   float64
+	}
+	
+	var scored []articleScore
+	prioritySources := map[string]float64{
+		"CoinDesk":      3.0,
+		"CoinTelegraph": 2.5,
+		"BitcoinCom":    2.0,
+		"Decrypt":       2.0,
+		"RedditCrypto":  1.5,
+	}
+	
+	for _, article := range articles {
+		score := 1.0 // Base score
+		
+		// Source priority
+		if sourceScore, exists := prioritySources[article.Source]; exists {
+			score *= sourceScore
+		}
+		
+		// Time decay: newer articles get higher scores
+		hoursAgo := float64(article.PublishedAt.Unix()) // Simple time scoring
+		if hoursAgo > 0 {
+			score *= (1.0 + 1.0/hoursAgo) // Newer = higher score
+		}
+		
+		// Content quality: longer articles often have more substance
+		if len(article.Content) > 500 {
+			score *= 1.2
+		}
+		
+		scored = append(scored, articleScore{article: article, score: score})
+	}
+	
+	// Sort by score (highest first)
+	for i := 0; i < len(scored)-1; i++ {
+		for j := 0; j < len(scored)-i-1; j++ {
+			if scored[j].score < scored[j+1].score {
+				scored[j], scored[j+1] = scored[j+1], scored[j]
+			}
+		}
+	}
+	
+	// Return top 10-12 articles for optimal LLM processing
+	maxArticles := 12
+	if len(scored) < maxArticles {
+		maxArticles = len(scored)
+	}
+	
+	optimized := make([]NewsItem, maxArticles)
+	for i := 0; i < maxArticles; i++ {
+		optimized[i] = scored[i].article
+	}
+	
+	return optimized
 }

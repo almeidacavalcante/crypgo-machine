@@ -73,7 +73,7 @@ func NewLLMSentimentAnalyzer() *LLMSentimentAnalyzer {
 		EnableFallback:  true,
 		CacheTTL:        30 * time.Minute,
 		MaxConcurrency:  5,
-		Timeout:         45 * time.Second,
+		Timeout:         90 * time.Second,
 		CostLimit:       10.0, // $10/day default limit
 	}
 
