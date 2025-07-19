@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypgo Dashboard - Dark Mode Example</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root[data-theme="dark"] {
+            /* Primary Colors */
+            --primary-50: #e6f1ff;
+            --primary-100: #b3d4ff;
+            --primary-200: #80b8ff;
+            --primary-300: #4d9bff;
+            --primary-400: #1a7eff;
+            --primary-500: #0066ff;
+            --primary-600: #0052cc;
+            --primary-700: #003d99;
+            --primary-800: #002966;
+            --primary-900: #001433;
+
+            /* Neutral Colors */
+            --bg-primary: #0a0c0e;
+            --bg-secondary: #12151a;
+            --bg-tertiary: #1a1e24;
+            --bg-hover: #22272e;
+
+            /* Text Colors */
+            --text-primary: #f8f9fa;
+            --text-secondary: #adb5bd;
+            --text-tertiary: #6c757d;
+            --text-disabled: #495057;
+
+            /* Accent Colors */
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --info: #3b82f6;
+
+            /* Typography */
+            --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;
+
+            /* Spacing */
+            --space-1: 0.25rem;
+            --space-2: 0.5rem;
+            --space-3: 0.75rem;
+            --space-4: 1rem;
+            --space-5: 1.25rem;
+            --space-6: 1.5rem;
+            --space-8: 2rem;
+
+            /* Border Radius */
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+
+            /* Shadows */
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            
+            /* Glows */
+            --glow-primary: 0 0 20px rgba(0, 102, 255, 0.4);
+            --glow-success: 0 0 20px rgba(34, 197, 94, 0.4);
+            --glow-error: 0 0 20px rgba(239, 68, 68, 0.4);
+
+            /* Transitions */
+            --transition-fast: 150ms ease;
+            --transition-base: 200ms ease;
+            --transition-slow: 300ms ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-primary);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: var(--space-6);
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-8);
+            padding-bottom: var(--space-6);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-400), var(--primary-600));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav {
+            display: flex;
+            gap: var(--space-6);
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color var(--transition-base);
+            position: relative;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-link.active {
+            color: var(--primary-400);
+        }
+
+        .nav-link.active::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--primary-400);
+            border-radius: 2px;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--space-6);
+            margin-bottom: var(--space-8);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            box-shadow: var(--shadow-md);
+            transition: all var(--transition-base);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary-400), transparent);
+            opacity: 0;
+            transition: opacity var(--transition-base);
+        }
+
+        .card:hover {
+            background: var(--bg-tertiary);
+            border-color: rgba(255, 255, 255, 0.12);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-4);
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .card-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--radius-md);
+        }
+
+        .metric {
+            font-size: 2.25rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            margin-bottom: var(--space-2);
+        }
+
+        .metric-change {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-1);
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .metric-change.positive {
+            color: var(--success);
+        }
+
+        .metric-change.negative {
+            color: var(--error);
+        }
+
+        /* Buttons */
+        .btn {
+            font-family: inherit;
+            font-weight: 500;
+            padding: var(--space-3) var(--space-5);
+            border-radius: var(--radius-md);
+            transition: all var(--transition-base);
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: 0.875rem;
+        }
+
+        .btn-primary {
+            background: var(--primary-500);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-600);
+            box-shadow: var(--glow-primary);
+            transform: translateY(-1px);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-ghost:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Table */
+        .table-container {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: var(--shadow-md);
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 500;
+            padding: var(--space-4);
+            text-align: left;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .table td {
+            padding: var(--space-4);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+        }
+
+        .table tr:hover td {
+            background: var(--bg-hover);
+        }
+
+        /* Status Badge */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-success {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+
+        .badge-error {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        /* Chart Container */
+        .chart-container {
+            background: var(--bg-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-tertiary);
+            font-size: 0.875rem;
+        }
+
+        /* Loading State */
+        .skeleton {
+            background: linear-gradient(
+                90deg,
+                var(--bg-secondary) 25%,
+                var(--bg-tertiary) 50%,
+                var(--bg-secondary) 75%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: var(--radius-md);
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="logo">Crypgo Machine</h1>
+            <nav class="nav">
+                <a href="#" class="nav-link active">Dashboard</a>
+                <a href="#" class="nav-link">Trading Bots</a>
+                <a href="#" class="nav-link">Backtest</a>
+                <a href="#" class="nav-link">Analytics</a>
+                <a href="#" class="nav-link">Settings</a>
+            </nav>
+        </header>
+
+        <!-- Metrics Grid -->
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Total Portfolio Value</h3>
+                    <div class="card-icon">💰</div>
+                </div>
+                <div class="metric">R$ 125,432.50</div>
+                <div class="metric-change positive">
+                    <span>↑</span>
+                    <span>+12.5% (24h)</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Active Bots</h3>
+                    <div class="card-icon">🤖</div>
+                </div>
+                <div class="metric">8</div>
+                <div class="metric-change positive">
+                    <span>↑</span>
+                    <span>+2 this week</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Today's P&L</h3>
+                    <div class="card-icon">📊</div>
+                </div>
+                <div class="metric">R$ 3,245.80</div>
+                <div class="metric-change positive">
+                    <span>↑</span>
+                    <span>+2.6%</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Win Rate</h3>
+                    <div class="card-icon">🎯</div>
+                </div>
+                <div class="metric">68.3%</div>
+                <div class="metric-change negative">
+                    <span>↓</span>
+                    <span>-1.2% (7d)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart Section -->
+        <div class="chart-container">
+            <p>Portfolio Performance Chart (Chart.js or similar library would go here)</p>
+        </div>
+
+        <!-- Table Section -->
+        <div style="margin-top: var(--space-8);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+                <h2 style="font-size: 1.25rem; font-weight: 600;">Active Trading Bots</h2>
+                <button class="btn btn-primary">
+                    <span>+</span>
+                    <span>New Bot</span>
+                </button>
+            </div>
+            
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Bot Name</th>
+                            <th>Symbol</th>
+                            <th>Strategy</th>
+                            <th>Status</th>
+                            <th>P&L (24h)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="font-weight: 500;">BTC Bull Runner</td>
+                            <td style="font-family: var(--font-mono);">BTCBRL</td>
+                            <td>Moving Average</td>
+                            <td><span class="badge badge-success">Running</span></td>
+                            <td style="color: var(--success); font-weight: 600;">+R$ 1,234.50</td>
+                            <td>
+                                <button class="btn btn-ghost">Manage</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: 500;">SOL Breakout</td>
+                            <td style="font-family: var(--font-mono);">SOLBRL</td>
+                            <td>Breakout</td>
+                            <td><span class="badge badge-success">Running</span></td>
+                            <td style="color: var(--success); font-weight: 600;">+R$ 856.30</td>
+                            <td>
+                                <button class="btn btn-ghost">Manage</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: 500;">ETH Scalper</td>
+                            <td style="font-family: var(--font-mono);">ETHBRL</td>
+                            <td>Moving Average</td>
+                            <td><span class="badge badge-warning">Paused</span></td>
+                            <td style="color: var(--error); font-weight: 600;">-R$ 145.20</td>
+                            <td>
+                                <button class="btn btn-ghost">Manage</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: 500;">BNB Momentum</td>
+                            <td style="font-family: var(--font-mono);">BNBBRL</td>
+                            <td>Breakout</td>
+                            <td><span class="badge badge-error">Stopped</span></td>
+                            <td style="color: var(--text-tertiary); font-weight: 600;">R$ 0.00</td>
+                            <td>
+                                <button class="btn btn-ghost">Manage</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

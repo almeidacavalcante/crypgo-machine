@@ -1,41 +1,11 @@
 /* Componentes Reutilizáveis */
 
-/* Reset básico */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+/* Legacy components - will be overridden by dark-theme.css */
+/* Keep for backward compatibility but use dark-theme.css variables when possible */
 
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: #0f0f0f;
-    color: #ffffff;
-    line-height: 1.6;
-}
+/* Legacy container - overridden by dark-theme.css */
 
-/* Container principal */
-.container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 20px;
-}
-
-/* Header */
-.header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 0;
-    border-bottom: 1px solid #333;
-    margin-bottom: 30px;
-}
-
-.header h1 {
-    color: #00ff88;
-    font-size: 2rem;
-    font-weight: 600;
-}
+/* Legacy header - overridden by dark-theme.css */
 
 .header-controls {
     display: flex;
@@ -64,7 +34,7 @@ body {
 
 .logout-btn:hover {
     background: #333;
-    border-color: #00ff88;
+    border-color: var(--neutral-500);
     transform: translateY(-1px);
 }
 
@@ -85,7 +55,7 @@ body {
 }
 
 .status-dot.connected {
-    background-color: #00ff88;
+    background-color: var(--success);
 }
 
 @keyframes pulse {
@@ -107,9 +77,9 @@ body {
 }
 
 .metric-card:hover {
-    border-color: #00ff88;
+    border-color: var(--primary-400);
     transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(0, 255, 136, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 102, 255, 0.1);
 }
 
 .metric-icon {
@@ -126,7 +96,7 @@ body {
 .metric-value {
     font-size: 1.8rem;
     font-weight: 600;
-    color: #00ff88;
+    color: var(--text-primary);
 }
 
 /* Botões */
@@ -142,12 +112,12 @@ body {
 }
 
 .btn-primary {
-    background-color: #00ff88;
-    color: #000;
+    background-color: var(--primary-500);
+    color: white;
 }
 
 .btn-primary:hover {
-    background-color: #00cc6a;
+    background-color: var(--primary-600);
     transform: translateY(-1px);
 }
 
@@ -164,8 +134,8 @@ body {
 
 .refresh-btn {
     background-color: #1a1a1a;
-    color: #00ff88;
-    border: 1px solid #00ff88;
+    color: var(--text-secondary);
+    border: 1px solid var(--neutral-600);
     padding: 8px 16px;
     border-radius: 6px;
     cursor: pointer;
@@ -173,8 +143,8 @@ body {
 }
 
 .refresh-btn:hover {
-    background-color: #00ff88;
-    color: #000;
+    background-color: var(--primary-500);
+    color: white;
 }
 
 /* Formulários */
@@ -201,7 +171,7 @@ body {
 
 .filter-group select:focus {
     outline: none;
-    border-color: #00ff88;
+    border-color: var(--primary-500);
 }
 
 /* Checkbox */
@@ -223,7 +193,7 @@ body {
 .auto-refresh input[type="checkbox"] {
     width: 16px;
     height: 16px;
-    accent-color: #00ff88;
+    accent-color: var(--primary-500);
 }
 
 /* Tabela */
@@ -248,7 +218,7 @@ body {
 
 .bots-table th {
     background-color: #2a2a2a;
-    color: #00ff88;
+    color: var(--text-secondary);
     font-weight: 600;
     font-size: 0.9rem;
     text-transform: uppercase;
@@ -273,9 +243,9 @@ body {
 }
 
 .status-running {
-    background-color: rgba(0, 255, 136, 0.2);
-    color: #00ff88;
-    border: 1px solid #00ff88;
+    background-color: rgba(34, 197, 94, 0.2);
+    color: var(--success);
+    border: 1px solid var(--success);
 }
 
 .status-stopped {
