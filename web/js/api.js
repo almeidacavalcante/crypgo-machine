@@ -131,10 +131,13 @@ class ApiClient {
     /**
      * Lista logs de trading
      */
-    async listTradingLogs(decision = '', limit = 50) {
-        let url = `/trading/logs?limit=${limit}`;
+    async listTradingLogs(decision = '', limit = 20, offset = 0, symbol = '') {
+        let url = `/trading/logs?limit=${limit}&offset=${offset}`;
         if (decision) {
             url += `&decision=${decision}`;
+        }
+        if (symbol) {
+            url += `&symbol=${symbol}`;
         }
         return this.request(url);
     }

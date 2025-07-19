@@ -14,7 +14,9 @@ type ListTradingLogsUseCase struct {
 // ListTradingLogsInput represents the input for listing trading logs
 type ListTradingLogsInput struct {
 	Decision string `json:"decision"` // Optional filter by decision (HOLD, BUY, SELL)
-	Limit    int    `json:"limit"`    // Number of logs to return (default 50)
+	Symbol   string `json:"symbol"`   // Optional filter by symbol (BTCBRL, ETHBRL, SOLBRL)
+	Limit    int    `json:"limit"`    // Number of logs to return (default 20)
+	Offset   int    `json:"offset"`   // Number of logs to skip for pagination (default 0)
 }
 
 // TradingLogOutput represents a single trading log with bot information
@@ -53,18 +55,16 @@ func NewListTradingLogsUseCase(
 func (uc *ListTradingLogsUseCase) Execute(input ListTradingLogsInput) (*ListTradingLogsOutput, error) {
 	// Set default limit
 	if input.Limit <= 0 {
-		input.Limit = 50
+		input.Limit = 20
 	}
 
-	// Get logs based on filter
-	var logs []*entity.TradingDecisionLog
-	var err error
-
-	if input.Decision != "" {
-		logs, err = uc.tradingDecisionLogRepository.GetRecentLogsByDecision(input.Decision, input.Limit)
-	} else {
-		logs, err = uc.tradingDecisionLogRepository.GetRecentLogs(input.Limit)
-	}
+	// Use new method with filters and pagination
+	logs, total, err := uc.tradingDecisionLogRepository.GetLogsWithFilters(
+		input.Decision, 
+		input.Symbol, 
+		input.Limit, 
+		input.Offset,
+	)
 
 	if err != nil {
 		return nil, err
@@ -117,6 +117,6 @@ func (uc *ListTradingLogsUseCase) Execute(input ListTradingLogsInput) (*ListTrad
 
 	return &ListTradingLogsOutput{
 		Logs:  outputLogs,
-		Total: len(outputLogs),
+		Total: total,
 	}, nil
 }

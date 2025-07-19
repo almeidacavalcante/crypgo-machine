@@ -8,4 +8,5 @@ type TradingDecisionLogRepository interface {
 	GetByTradingBotIdWithLimit(tradingBotId string, limit int) ([]*entity.TradingDecisionLog, error)
 	GetRecentLogs(limit int) ([]*entity.TradingDecisionLog, error)
 	GetRecentLogsByDecision(decision string, limit int) ([]*entity.TradingDecisionLog, error)
+	GetLogsWithFilters(decision string, symbol string, limit int, offset int) ([]*entity.TradingDecisionLog, int, error)
 }

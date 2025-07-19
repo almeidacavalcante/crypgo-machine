@@ -193,7 +193,7 @@ function showNotification(message, type = 'info') {
 /**
  * Calcula métricas agregadas dos bots
  */
-function calculateMetrics(bots) {
+function calculateMetrics(bots, logs = []) {
     const metrics = {
         total: bots.length,
         active: 0,
@@ -202,17 +202,30 @@ function calculateMetrics(bots) {
         symbols: {}
     };
     
+    // Cria mapa de entry prices dos logs mais recentes por bot
+    const entryPrices = {};
+    if (logs && logs.length > 0) {
+        logs.forEach(log => {
+            if (log.entry_price && log.bot_id && log.is_positioned) {
+                entryPrices[log.bot_id] = log.entry_price;
+            }
+        });
+    }
+    
     bots.forEach(bot => {
         if (bot.status === 'RUNNING') {
             metrics.active++;
         }
         
-        if (bot.positioned) {
+        if (bot.is_positioned) {
             metrics.positioned++;
-        }
-        
-        if (bot.initial_capital) {
-            metrics.totalCapital += parseFloat(bot.initial_capital);
+            
+            // Para bots posicionados, calcula quantity * entry_price
+            const entryPrice = entryPrices[bot.id];
+            if (entryPrice && bot.quantity) {
+                const positionValueBRL = parseFloat(bot.quantity) * parseFloat(entryPrice);
+                metrics.totalCapital += positionValueBRL;
+            }
         }
         
         // Agrupa por símbolo

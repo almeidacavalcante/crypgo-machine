@@ -398,3 +398,72 @@
         display: none;
     }
 }
+
+/* === Paginação de Logs === */
+.logs-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background-color: #2a2a2a;
+    border-top: 1px solid #333;
+}
+
+.pagination-info {
+    color: #ccc;
+    font-size: 0.9rem;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.pagination-btn {
+    padding: 8px 16px;
+    background-color: #333;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background-color: #00ff88;
+    border-color: #00ff88;
+    color: #000;
+}
+
+.pagination-btn:disabled {
+    background-color: #222;
+    border-color: #333;
+    color: #666;
+    cursor: not-allowed;
+}
+
+#currentLogsPage {
+    color: #00ff88;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+/* Responsividade para paginação */
+@media (max-width: 768px) {
+    .logs-pagination {
+        flex-direction: column;
+        gap: 10px;
+        padding: 15px;
+    }
+    
+    .pagination-controls {
+        gap: 10px;
+    }
+    
+    .pagination-btn {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+    }
+}

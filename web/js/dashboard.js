@@ -15,6 +15,9 @@ class Dashboard {
             decision: '',
             symbol: ''
         };
+        this.currentPage = 1;
+        this.logsPerPage = 20;
+        this.totalLogs = 0;
         this.autoRefreshEnabled = true;
         this.autoRefreshInterval = null;
         this.refreshIntervalMs = 30000; // 30 segundos
@@ -123,7 +126,8 @@ class Dashboard {
         if (logsDecisionFilter) {
             logsDecisionFilter.addEventListener('change', (e) => {
                 this.logsFilters.decision = e.target.value;
-                this.applyLogsFilters();
+                this.currentPage = 1; // Reset to first page when filtering
+                this.loadLogs(); // Reload from backend with new filter
             });
         }
 
@@ -131,7 +135,30 @@ class Dashboard {
         if (logsSymbolFilter) {
             logsSymbolFilter.addEventListener('change', (e) => {
                 this.logsFilters.symbol = e.target.value;
-                this.applyLogsFilters();
+                this.currentPage = 1; // Reset to first page when filtering
+                this.loadLogs(); // Reload from backend with new filter
+            });
+        }
+
+        // Pagination event listeners
+        const prevLogsBtn = document.getElementById('prevLogsBtn');
+        if (prevLogsBtn) {
+            prevLogsBtn.addEventListener('click', () => {
+                if (this.currentPage > 1) {
+                    this.currentPage--;
+                    this.loadLogs();
+                }
+            });
+        }
+
+        const nextLogsBtn = document.getElementById('nextLogsBtn');
+        if (nextLogsBtn) {
+            nextLogsBtn.addEventListener('click', () => {
+                const totalPages = Math.ceil(this.totalLogs / this.logsPerPage);
+                if (this.currentPage < totalPages) {
+                    this.currentPage++;
+                    this.loadLogs();
+                }
             });
         }
     }
@@ -210,7 +237,7 @@ class Dashboard {
      * Atualiza métricas no topo
      */
     updateMetrics() {
-        const metrics = calculateMetrics(this.bots);
+        const metrics = calculateMetrics(this.bots, this.logs);
         
         // Atualiza cards de métricas
         const totalBots = document.getElementById('totalBots');
@@ -277,7 +304,7 @@ class Dashboard {
                 ${bot.status ? createStatusBadge(bot.status).outerHTML : '-'}
             </td>
             <td>
-                ${createPositionBadge(bot.positioned || false).outerHTML}
+                ${createPositionBadge(bot.is_positioned || false).outerHTML}
             </td>
             <td>
                 ${translateStrategy(bot.strategy) || '-'}
@@ -366,12 +393,20 @@ class Dashboard {
         debugLog('Carregando logs de trading...');
         
         try {
-            const result = await safeApiCall(() => apiClient.listTradingLogs(this.logsFilters.decision, 50), []);
+            const offset = (this.currentPage - 1) * this.logsPerPage;
+            const result = await safeApiCall(() => 
+                apiClient.listTradingLogs(this.logsFilters.decision, this.logsPerPage, offset, this.logsFilters.symbol), 
+                []
+            );
             
             if (result.success && result.data) {
                 this.logs = result.data.logs || [];
-                this.applyLogsFilters();
-                debugLog(`${this.logs.length} logs carregados`);
+                this.totalLogs = result.data.total || 0;
+                this.updateLogsTable(); // Direct update, no frontend filtering needed
+                this.updateLogsPagination();
+                // Atualiza métricas com dados dos logs (entry prices)
+                this.updateMetrics();
+                debugLog(`${this.logs.length} logs carregados (página ${this.currentPage})`);
             } else {
                 throw new Error(result.error || 'Erro ao carregar logs');
             }
@@ -382,20 +417,6 @@ class Dashboard {
         }
     }
 
-    /**
-     * Aplica filtros aos logs
-     */
-    applyLogsFilters() {
-        this.filteredLogs = this.logs.filter(log => {
-            const symbolMatch = !this.logsFilters.symbol || log.symbol === this.logsFilters.symbol;
-            const decisionMatch = !this.logsFilters.decision || log.decision === this.logsFilters.decision;
-            
-            return symbolMatch && decisionMatch;
-        });
-        
-        this.updateLogsTable();
-        debugLog(`Filtros de logs aplicados. ${this.filteredLogs.length} de ${this.logs.length} logs exibidos`);
-    }
 
     /**
      * Atualiza tabela de logs
@@ -407,14 +428,14 @@ class Dashboard {
         // Limpa tabela
         tableBody.innerHTML = '';
 
-        if (this.filteredLogs.length === 0) {
+        if (this.logs.length === 0) {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td colspan="7" class="empty-state">
                     <div class="empty-state-icon">📊</div>
                     <div class="empty-state-message">Nenhum log encontrado</div>
                     <div class="empty-state-description">
-                        ${this.logs.length === 0 ? 'Nenhum log de trading disponível ainda.' : 'Tente ajustar os filtros acima.'}
+                        Nenhum log de trading disponível para os filtros selecionados.
                     </div>
                 </td>
             `;
@@ -423,7 +444,7 @@ class Dashboard {
         }
 
         // Preenche tabela com logs
-        this.filteredLogs.forEach(log => {
+        this.logs.forEach(log => {
             const row = document.createElement('tr');
             
             // Determina classe CSS baseada na decisão
@@ -481,6 +502,39 @@ class Dashboard {
                 </td>
             </tr>
         `;
+    }
+
+    /**
+     * Atualiza controles de paginação dos logs
+     */
+    updateLogsPagination() {
+        const totalPages = Math.ceil(this.totalLogs / this.logsPerPage);
+        const startItem = ((this.currentPage - 1) * this.logsPerPage) + 1;
+        const endItem = Math.min(this.currentPage * this.logsPerPage, this.totalLogs);
+
+        // Atualiza informação de paginação
+        const logsInfo = document.getElementById('logsInfo');
+        if (logsInfo) {
+            logsInfo.textContent = `Mostrando ${startItem}-${endItem} de ${this.totalLogs} logs`;
+        }
+
+        // Atualiza página atual
+        const currentLogsPage = document.getElementById('currentLogsPage');
+        if (currentLogsPage) {
+            currentLogsPage.textContent = `${this.currentPage} de ${totalPages}`;
+        }
+
+        // Atualiza botões de navegação
+        const prevBtn = document.getElementById('prevLogsBtn');
+        const nextBtn = document.getElementById('nextLogsBtn');
+
+        if (prevBtn) {
+            prevBtn.disabled = this.currentPage <= 1;
+        }
+
+        if (nextBtn) {
+            nextBtn.disabled = this.currentPage >= totalPages;
+        }
     }
 }
 

@@ -12,6 +12,48 @@ type TradingDecisionLogRepositoryInMemory struct {
 	mu   sync.RWMutex
 }
 
+func (r *TradingDecisionLogRepositoryInMemory) GetLogsWithFilters(decision string, symbol string, limit int, offset int) ([]*entity.TradingDecisionLog, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Filter all logs
+	var filtered []*entity.TradingDecisionLog
+	for _, log := range r.logs {
+		// Filter by decision if specified
+		if decision != "" && string(log.GetDecision()) != decision {
+			continue
+		}
+
+		// TODO: Filter by symbol requires bot information
+		// For now, skip symbol filtering in in-memory implementation
+		if symbol != "" {
+			// Skip symbol filtering for in-memory repo
+		}
+
+		filtered = append(filtered, log)
+	}
+
+	// Sort by timestamp descending
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].GetTimestamp().After(filtered[j].GetTimestamp())
+	})
+
+	total := len(filtered)
+
+	// Apply pagination
+	start := offset
+	if start > len(filtered) {
+		return []*entity.TradingDecisionLog{}, total, nil
+	}
+
+	end := start + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+
+	return filtered[start:end], total, nil
+}
+
 func NewTradingDecisionLogRepositoryInMemory() *TradingDecisionLogRepositoryInMemory {
 	return &TradingDecisionLogRepositoryInMemory{
 		logs: make(map[string]*entity.TradingDecisionLog),
@@ -36,23 +78,23 @@ func (r *TradingDecisionLogRepositoryInMemory) GetByTradingBotIdWithLimit(tradin
 	defer r.mu.RUnlock()
 
 	var logs []*entity.TradingDecisionLog
-	
+
 	for _, log := range r.logs {
 		if log.GetTradingBotId().GetValue() == tradingBotId {
 			logs = append(logs, log)
 		}
 	}
-	
+
 	// Sort by timestamp DESC (most recent first)
 	sort.Slice(logs, func(i, j int) bool {
 		return logs[i].GetTimestamp().After(logs[j].GetTimestamp())
 	})
-	
+
 	// Apply limit if specified
 	if limit > 0 && len(logs) > limit {
 		logs = logs[:limit]
 	}
-	
+
 	return logs, nil
 }
 

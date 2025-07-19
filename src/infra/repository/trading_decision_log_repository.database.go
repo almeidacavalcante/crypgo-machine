@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -246,4 +247,68 @@ func (r *TradingDecisionLogRepositoryDatabase) scanRows(rows *sql.Rows) ([]*enti
 	}
 
 	return logs, nil
+}
+// GetLogsWithFilters retrieves logs with optional filters and pagination
+func (r *TradingDecisionLogRepositoryDatabase) GetLogsWithFilters(decision string, symbol string, limit int, offset int) ([]*entity.TradingDecisionLog, int, error) {
+	// Build WHERE clause dynamically
+	var whereConditions []string
+	var args []interface{}
+	argIndex := 1
+
+	if decision != "" {
+		whereConditions = append(whereConditions, fmt.Sprintf("l.decision = $%d", argIndex))
+		args = append(args, decision)
+		argIndex++
+	}
+
+	if symbol != "" {
+		whereConditions = append(whereConditions, fmt.Sprintf("b.symbol = $%d", argIndex))
+		args = append(args, symbol)
+		argIndex++
+	}
+
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	// First, get total count
+	countQuery := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM trading_decision_logs l
+		LEFT JOIN trade_bots b ON l.trading_bot_id = b.id
+		%s
+	`, whereClause)
+
+	var total int
+	err := r.db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Then get the actual logs with pagination
+	query := fmt.Sprintf(`
+		SELECT l.id, l.trading_bot_id, l.decision, l.strategy_name, l.analysis_data, 
+			   l.market_data, l.current_price, l.current_possible_profit, l.timestamp
+		FROM trading_decision_logs l
+		LEFT JOIN trade_bots b ON l.trading_bot_id = b.id
+		%s
+		ORDER BY l.timestamp DESC
+		LIMIT $%d OFFSET $%d
+	`, whereClause, argIndex, argIndex+1)
+
+	args = append(args, limit, offset)
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	logs, err := r.scanRows(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return logs, total, nil
 }
