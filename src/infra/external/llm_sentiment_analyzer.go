@@ -64,6 +64,14 @@ type EnhancedNewsAnalysisResult struct {
 	AnalysisQuality     string                       `json:"analysis_quality"`  // "high", "medium", "low"
 	KeyInsights         []string                     `json:"key_insights,omitempty"`
 	MarketContext       string                       `json:"market_context,omitempty"`
+	TopQuotes           []NewsQuote                  `json:"top_quotes,omitempty"`
+}
+
+type NewsQuote struct {
+	Quote  string `json:"quote"`
+	Source string `json:"source"`
+	Link   string `json:"link"`
+	Score  float64 `json:"score"`
 }
 
 func NewLLMSentimentAnalyzer() *LLMSentimentAnalyzer {
@@ -73,7 +81,7 @@ func NewLLMSentimentAnalyzer() *LLMSentimentAnalyzer {
 		EnableFallback:  true,
 		CacheTTL:        30 * time.Minute,
 		MaxConcurrency:  5,
-		Timeout:         90 * time.Second,
+		Timeout:         120 * time.Second,
 		CostLimit:       10.0, // $10/day default limit
 	}
 
@@ -175,6 +183,7 @@ func (l *LLMSentimentAnalyzer) analyzewithLLM(newsItems []NewsItem) (*EnhancedNe
 	var totalScore float64
 	sourceScores := make(map[string][]float64)
 	var keyInsights []string
+	var topQuotes []NewsQuote
 
 	// Process articles with optional caching
 	for _, item := range newsItems {
@@ -217,6 +226,17 @@ func (l *LLMSentimentAnalyzer) analyzewithLLM(newsItems []NewsItem) (*EnhancedNe
 		// Collect insights
 		if llmResult.Reasoning != "" {
 			keyInsights = append(keyInsights, llmResult.Reasoning)
+		}
+		
+		// Collect top quotes for citation section
+		if llmResult.Summary != "" && len(llmResult.Summary) > 20 {
+			quote := NewsQuote{
+				Quote:  llmResult.Summary,
+				Source: item.Source,
+				Link:   item.Link,
+				Score:  llmResult.Score,
+			}
+			topQuotes = append(topQuotes, quote)
 		}
 
 		// Classify article
@@ -273,6 +293,21 @@ func (l *LLMSentimentAnalyzer) analyzewithLLM(newsItems []NewsItem) (*EnhancedNe
 		keyInsights = keyInsights[:5]
 	}
 	result.KeyInsights = keyInsights
+
+	// Sort and limit top quotes by score (best first)
+	for i := 0; i < len(topQuotes)-1; i++ {
+		for j := 0; j < len(topQuotes)-i-1; j++ {
+			if topQuotes[j].Score < topQuotes[j+1].Score {
+				topQuotes[j], topQuotes[j+1] = topQuotes[j+1], topQuotes[j]
+			}
+		}
+	}
+	
+	// Limit to top 5 quotes
+	if len(topQuotes) > 5 {
+		topQuotes = topQuotes[:5]
+	}
+	result.TopQuotes = topQuotes
 
 	// Generate market context
 	result.MarketContext = l.generateMarketContext(result.OverallScore, result.PositiveArticles, result.NegativeArticles)

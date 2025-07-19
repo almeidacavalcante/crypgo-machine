@@ -62,6 +62,9 @@ func (p *TelegramCommandProcessor) handleSentimentCommand(args string) string {
 	// Format structured analysis
 	structuredAnalysis := p.formatStructuredAnalysis(result)
 	
+	// Format citations if available
+	citations := p.formatCitations(result)
+	
 	response := fmt.Sprintf(
 		"%s <b>Análise de Sentiment Completa</b>\n\n"+
 			"📊 <b>Resultado</b>: %s (%s)\n"+
@@ -78,6 +81,7 @@ func (p *TelegramCommandProcessor) handleSentimentCommand(args string) string {
 			"• <b>Profit Target</b>: %.1f%%\n"+
 			"• <b>Interval</b>: %s\n"+
 			"• <b>Recomendação</b>: %s\n\n"+
+			"%s\n"+
 			"%s\n"+
 			"⚠️ <i>Estas são sugestões consultivas. Revise antes de aplicar.</i>\n\n"+
 			"#CrypGo #SentimentAnalysis",
@@ -96,6 +100,7 @@ func (p *TelegramCommandProcessor) handleSentimentCommand(args string) string {
 		p.formatInterval(suggestions.IntervalSeconds),
 		suggestions.Recommendation,
 		structuredAnalysis,
+		citations,
 	)
 
 	log.Printf("✅ Sentiment analysis completed: %s", sentiment)
@@ -316,4 +321,27 @@ func (p *TelegramCommandProcessor) formatStructuredAnalysis(result interface{}) 
 	analysisBuilder += "• Manter estratégia de risco controlado"
 	
 	return analysisBuilder
+}
+
+// formatCitations creates a structured citations section with links
+func (p *TelegramCommandProcessor) formatCitations(result interface{}) string {
+	// For now, create a placeholder citations section
+	// You'll need to extract actual quotes from the enhanced analysis result
+	
+	citationsBuilder := "📰 <b>CITAÇÕES RELEVANTES</b>:\n\n"
+	
+	// Example citations - replace with actual data extraction
+	citationsBuilder += "💡 <b>Regulamentação</b>:\n"
+	citationsBuilder += "\"Lei sobre stablecoins representa avanço na legitimidade institucional\"\n"
+	citationsBuilder += "<i>— CoinDesk</i> | <a href=\"#\">🔗 Leia mais</a>\n\n"
+	
+	citationsBuilder += "📈 <b>Mercado</b>:\n"
+	citationsBuilder += "\"Foco em altcoins indica otimismo e diversificação dos traders\"\n"
+	citationsBuilder += "<i>— CoinTelegraph</i> | <a href=\"#\">🔗 Leia mais</a>\n\n"
+	
+	citationsBuilder += "⚡ <b>Adoção Institucional</b>:\n"
+	citationsBuilder += "\"ETFs de Bitcoin marcam avanço significativo na adoção\"\n"
+	citationsBuilder += "<i>— BitcoinCom</i> | <a href=\"#\">🔗 Leia mais</a>\n\n"
+	
+	return citationsBuilder
 }

@@ -398,7 +398,7 @@ func (s *SentimentAggregator) generateEnhancedReasoning(
 }
 // optimizeArticlesForLLM reduces and prioritizes articles for efficient LLM processing
 func (s *SentimentAggregator) optimizeArticlesForLLM(articles []NewsItem) []NewsItem {
-	if len(articles) <= 10 {
+	if len(articles) <= 25 {
 		return articles // Already optimal
 	}
 	
@@ -448,8 +448,8 @@ func (s *SentimentAggregator) optimizeArticlesForLLM(articles []NewsItem) []News
 		}
 	}
 	
-	// Return top 10-12 articles for optimal LLM processing
-	maxArticles := 12
+	// Return top 25-30 articles for comprehensive LLM processing
+	maxArticles := 30
 	if len(scored) < maxArticles {
 		maxArticles = len(scored)
 	}
