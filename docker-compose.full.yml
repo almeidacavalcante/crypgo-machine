@@ -91,6 +91,76 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # N8N Automation Platform
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: crypgo-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-CrypGoN8N2024!}
+      - N8N_HOST=${N8N_HOST:-31.97.249.4}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://31.97.249.4:5678/
+      - GENERIC_TIMEZONE=America/Sao_Paulo
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=n8n-postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n_user
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD:-N8NStrongPass123!}
+      - N8N_LOG_LEVEL=info
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-CrypGoN8NEncryptionKey2024SuperStrong!}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - n8n_workflows:/home/node/.n8n/workflows
+    networks:
+      - crypgo-network
+    depends_on:
+      n8n-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL dedicado para N8N
+  n8n-postgres:
+    image: postgres:16
+    container_name: crypgo-n8n-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n8n_user
+      POSTGRES_PASSWORD: ${N8N_DB_PASSWORD:-N8NStrongPass123!}
+      POSTGRES_DB: n8n
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - n8n_postgres_data:/var/lib/postgresql/data
+    networks:
+      - crypgo-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n_user -d n8n"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Nginx Reverse Proxy (Opcional)
   nginx:
     image: nginx:alpine
@@ -105,6 +175,7 @@ services:
       - crypgo-network
     depends_on:
       - crypgo-app
+      - n8n
     logging:
       driver: "json-file"
       options:
@@ -123,3 +194,12 @@ volumes:
   rabbitmq_data:
     driver: local
     name: crypgo_rabbitmq_data
+  n8n_data:
+    driver: local
+    name: crypgo_n8n_data
+  n8n_workflows:
+    driver: local
+    name: crypgo_n8n_workflows
+  n8n_postgres_data:
+    driver: local
+    name: crypgo_n8n_postgres_data
