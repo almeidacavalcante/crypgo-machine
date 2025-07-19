@@ -162,17 +162,20 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Nginx Reverse Proxy (Opcional)
+  # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
     container_name: crypgo-nginx
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
       - "8081:8081"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./web:/var/www/html:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
     networks:
       - crypgo-network
     depends_on:
@@ -183,6 +186,17 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Certbot for SSL certificates
+  certbot:
+    image: certbot/certbot:latest
+    container_name: crypgo-certbot
+    volumes:
+      - ./certbot/www:/var/www/certbot:rw
+      - ./certbot/conf:/etc/letsencrypt:rw
+    networks:
+      - crypgo-network
+    command: sleep infinity  # Keep container running for manual certificate generation
 
 networks:
   crypgo-network:
