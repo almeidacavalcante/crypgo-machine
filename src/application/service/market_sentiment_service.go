@@ -1,6 +1,7 @@
 package service
 
 import (
+	"crypgo-machine/src/application/repository"
 	"crypgo-machine/src/domain/entity"
 	"crypgo-machine/src/domain/vo"
 	"crypgo-machine/src/infra/external"
@@ -9,7 +10,9 @@ import (
 )
 
 type MarketSentimentService struct {
-	aggregator *external.SentimentAggregator
+	aggregator          *external.SentimentAggregator
+	suggestionRepo      repository.SentimentSuggestionRepository
+	saveSuggestions     bool
 }
 
 type SentimentCollectionResult struct {
@@ -23,6 +26,16 @@ type SentimentCollectionResult struct {
 func NewMarketSentimentService() *MarketSentimentService {
 	return &MarketSentimentService{
 		aggregator: external.NewSentimentAggregator(),
+		saveSuggestions: false, // Will be set when repository is provided
+	}
+}
+
+// NewMarketSentimentServiceWithRepository creates service with repository for saving suggestions
+func NewMarketSentimentServiceWithRepository(repo repository.SentimentSuggestionRepository) *MarketSentimentService {
+	return &MarketSentimentService{
+		aggregator:      external.NewSentimentAggregator(),
+		suggestionRepo:  repo,
+		saveSuggestions: true,
 	}
 }
 
@@ -44,6 +57,16 @@ func (s *MarketSentimentService) CollectMarketSentiment() (*SentimentCollectionR
 	suggestion, err := entity.NewSentimentSuggestion(sources, aggregated.Reasoning, aggregated.Confidence)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sentiment suggestion: %w", err)
+	}
+	
+	// Save suggestion to database if repository is configured
+	if s.saveSuggestions && s.suggestionRepo != nil {
+		if err := s.suggestionRepo.Save(suggestion); err != nil {
+			// Log error but don't fail the analysis
+			fmt.Printf("⚠️  Warning: Failed to save sentiment suggestion to database: %v\n", err)
+		} else {
+			fmt.Printf("💾 Sentiment suggestion saved to database (ID: %s)\n", suggestion.GetId().GetValue())
+		}
 	}
 	
 	return &SentimentCollectionResult{

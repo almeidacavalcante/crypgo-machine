@@ -155,8 +155,8 @@ func main() {
 	listSentimentUseCase := usecase.NewListSentimentSuggestionsUseCase(sentimentSuggestionRepository)
 	approveSentimentUseCase := usecase.NewApproveSentimentSuggestionUseCase(sentimentSuggestionRepository, tradingBotRepository)
 	
-	// Market sentiment service and scheduler
-	marketSentimentService := service.NewMarketSentimentService()
+	// Market sentiment service and scheduler (with repository for auto-saving)
+	marketSentimentService := service.NewMarketSentimentServiceWithRepository(sentimentSuggestionRepository)
 	sentimentScheduler := scheduler.NewSentimentScheduler(marketSentimentService, sentimentSuggestionRepository, rabbit)
 	
 	// Telegram Bot Handler for interactive commands
