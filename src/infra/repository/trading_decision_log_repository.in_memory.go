@@ -85,7 +85,7 @@ func (r *TradingDecisionLogRepositoryInMemory) GetRecentLogsByDecision(decision 
 	// Filter by decision and sort by timestamp descending
 	var filtered []*entity.TradingDecisionLog
 	for _, log := range r.logs {
-		if log.GetDecision().String() == decision {
+		if string(log.GetDecision()) == decision {
 			filtered = append(filtered, log)
 		}
 	}

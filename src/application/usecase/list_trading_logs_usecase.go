@@ -71,7 +71,7 @@ func (uc *ListTradingLogsUseCase) Execute(input ListTradingLogsInput) (*ListTrad
 	}
 
 	// Get all trading bots to enrich the data
-	bots, err := uc.tradingBotRepository.GetAll()
+	bots, err := uc.tradingBotRepository.GetAllTradingBots()
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (uc *ListTradingLogsUseCase) Execute(input ListTradingLogsInput) (*ListTrad
 	// Create a map for quick bot lookup
 	botMap := make(map[string]*entity.TradingBot)
 	for _, bot := range bots {
-		botMap[bot.GetId().GetValue()] = bot
+		botMap[bot.Id.GetValue()] = bot
 	}
 
 	// Convert to output format
@@ -90,7 +90,7 @@ func (uc *ListTradingLogsUseCase) Execute(input ListTradingLogsInput) (*ListTrad
 		outputLog := TradingLogOutput{
 			ID:           log.GetId().GetValue(),
 			BotID:        log.GetTradingBotId().GetValue(),
-			Decision:     log.GetDecision().String(),
+			Decision:     string(log.GetDecision()),
 			CurrentPrice: log.GetCurrentPrice(),
 			StrategyName: log.GetStrategyName(),
 			AnalysisData: log.GetAnalysisData(),
@@ -100,11 +100,11 @@ func (uc *ListTradingLogsUseCase) Execute(input ListTradingLogsInput) (*ListTrad
 		// Add bot-specific information if bot exists
 		if bot != nil {
 			outputLog.Symbol = bot.GetSymbol().GetValue()
-			outputLog.IsPositioned = bot.IsPositioned()
+			outputLog.IsPositioned = bot.GetIsPositioned()
 
 			// Calculate profit percentage if bot is positioned
-			if bot.IsPositioned() && bot.GetEntryPrice() != nil {
-				entryPrice := *bot.GetEntryPrice()
+			if bot.GetIsPositioned() && bot.GetEntryPrice() > 0 {
+				entryPrice := bot.GetEntryPrice()
 				outputLog.EntryPrice = &entryPrice
 				
 				profitPercentage := ((log.GetCurrentPrice() - entryPrice) / entryPrice) * 100
