@@ -125,6 +125,15 @@ func (h *TelegramBotHandler) handleMessage(message *tgbotapi.Message) {
 
 	log.Printf("🔄 Processing command: /%s with args: %s", command, args)
 
+	// Send immediate processing message for sentiment analysis (can take time)
+	if command == "sentiment" {
+		processingMsg := "🧠 <b>Analisando Sentimento do Mercado</b>\n\n" +
+			"⏳ Coletando dados de múltiplas fontes...\n" +
+			"📊 Processando com IA avançada...\n\n" +
+			"<i>⏱️ Isso pode levar até 1 minuto. Aguarde...</i>"
+		h.sendMessage(message.Chat.ID, processingMsg)
+	}
+
 	response := h.commandProcessor.ProcessCommand(command, args, message.Chat.ID)
 	h.sendMessage(message.Chat.ID, response)
 }
