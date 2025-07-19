@@ -39,6 +39,9 @@ Thumbs.db
 .env
 .env.*
 
+# HTTP client environment with credentials  
+http-client.env.json
+
 # Build artifacts and executables
 *.tar.gz
 main
