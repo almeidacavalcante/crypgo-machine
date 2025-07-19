@@ -224,8 +224,8 @@ func (c *SentimentController) TriggerManualAnalysis(w http.ResponseWriter, r *ht
 	// Format response
 	response := map[string]interface{}{
 		"suggestion_id": result.Suggestion.GetId().GetValue(),
-		"sentiment":     result.Suggestion.GetLevel(),
-		"score":         result.Suggestion.GetOverallScore(),
+		"sentiment":     result.Suggestion.GetLevel().String(),
+		"score":         result.Suggestion.GetOverallScore().GetValue(),
 		"confidence":    result.Confidence,
 		"reasoning":     result.Reasoning,
 		"sources": map[string]interface{}{
@@ -234,7 +234,7 @@ func (c *SentimentController) TriggerManualAnalysis(w http.ResponseWriter, r *ht
 			"reddit_score":     result.Sources.GetRedditScore(),
 			"social_score":     result.Sources.GetSocialScore(),
 		},
-		"suggestions": c.marketService.GetSentimentSuggestions(result.Suggestion.GetLevel()),
+		"suggestions": c.marketService.GetSentimentSuggestions(result.Suggestion.GetLevel().String()),
 		"timestamp":   time.Now(),
 	}
 
@@ -261,8 +261,8 @@ func (c *SentimentController) QuickSentimentCheck(w http.ResponseWriter, r *http
 	}
 
 	response := map[string]interface{}{
-		"sentiment":  result.Suggestion.GetLevel(),
-		"score":      result.Suggestion.GetOverallScore(),
+		"sentiment":  result.Suggestion.GetLevel().String(),
+		"score":      result.Suggestion.GetOverallScore().GetValue(),
 		"confidence": result.Confidence,
 		"reasoning":  result.Reasoning,
 		"timestamp":  time.Now(),

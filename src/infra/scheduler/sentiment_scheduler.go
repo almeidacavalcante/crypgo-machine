@@ -181,19 +181,19 @@ func (s *SentimentScheduler) shouldNotifyQuickCheck(result *service.SentimentCol
 	score := result.Suggestion.GetOverallScore()
 	
 	// Notify on extreme sentiment levels
-	return sentiment == "very_bullish" || sentiment == "very_bearish" || 
-		   score > 0.5 || score < -0.5
+	return sentiment.String() == "very_bullish" || sentiment.String() == "very_bearish" || 
+		   score.GetValue() > 0.5 || score.GetValue() < -0.5
 }
 
 // sendNotification sends sentiment analysis results via message broker
 func (s *SentimentScheduler) sendNotification(result *service.SentimentCollectionResult, analysisType string) {
 	sentiment := result.Suggestion.GetLevel()
-	suggestions := s.marketService.GetSentimentSuggestions(sentiment)
+	suggestions := s.marketService.GetSentimentSuggestions(sentiment.String())
 	
 	payload := SentimentNotificationPayload{
 		SuggestionID: result.Suggestion.GetId().GetValue(),
-		Sentiment:    sentiment,
-		Score:        result.Suggestion.GetOverallScore(),
+		Sentiment:    sentiment.String(),
+		Score:        result.Suggestion.GetOverallScore().GetValue(),
 		Confidence:   result.Confidence,
 		Reasoning:    result.Reasoning,
 		Suggestions:  suggestions,
@@ -208,15 +208,14 @@ func (s *SentimentScheduler) sendNotification(result *service.SentimentCollectio
 	}
 	
 	message := queue.Message{
-		Exchange:    "trading_bot",
-		RoutingKey:  "sentiment.analysis.completed",
-		Payload:     messageBytes,
+		RoutingKey: "sentiment.analysis.completed",
+		Payload:    messageBytes,
 	}
 	
-	if err := s.messageBroker.Publish(message); err != nil {
+	if err := s.messageBroker.Publish("trading_bot", message); err != nil {
 		log.Printf("❌ Failed to publish sentiment notification: %v", err)
 	} else {
-		log.Printf("📨 Sentiment notification sent - %s analysis, sentiment: %s", analysisType, sentiment)
+		log.Printf("📨 Sentiment notification sent - %s analysis, sentiment: %s", analysisType, sentiment.String())
 	}
 }
 

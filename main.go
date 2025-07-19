@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypgo-machine/src/application/repository"
+	"crypgo-machine/src/application/service"
 	"crypgo-machine/src/application/usecase"
 	"crypgo-machine/src/domain/entity"
 	"crypgo-machine/src/infra/api"
@@ -13,6 +14,7 @@ import (
 	"crypgo-machine/src/infra/notification"
 	"crypgo-machine/src/infra/queue"
 	infraRepository "crypgo-machine/src/infra/repository"
+	"crypgo-machine/src/infra/scheduler"
 	"fmt"
 	"github.com/adshao/go-binance/v2"
 	"github.com/joho/godotenv"
@@ -75,6 +77,17 @@ func main() {
 			log.Printf("❌ Error starting Telegram notification consumer: %v", err)
 		} else {
 			fmt.Println("✅ Telegram notification consumer started successfully.")
+		}
+	}()
+	
+	// Telegram sentiment notification consumer
+	telegramSentimentConsumer := notification.NewTelegramSentimentConsumer(rabbit, "trading_bot", "telegram.sentiment.queue", telegramService)
+	go func() {
+		err := telegramSentimentConsumer.Start()
+		if err != nil {
+			log.Printf("❌ Error starting Telegram sentiment consumer: %v", err)
+		} else {
+			fmt.Println("✅ Telegram sentiment consumer started successfully.")
 		}
 	}()
 
@@ -141,7 +154,12 @@ func main() {
 	generateSentimentUseCase := usecase.NewGenerateSentimentSuggestionUseCase(sentimentSuggestionRepository)
 	listSentimentUseCase := usecase.NewListSentimentSuggestionsUseCase(sentimentSuggestionRepository)
 	approveSentimentUseCase := usecase.NewApproveSentimentSuggestionUseCase(sentimentSuggestionRepository, tradingBotRepository)
-	sentimentController := controller.NewSentimentController(generateSentimentUseCase, listSentimentUseCase, approveSentimentUseCase)
+	
+	// Market sentiment service and scheduler
+	marketSentimentService := service.NewMarketSentimentService()
+	sentimentScheduler := scheduler.NewSentimentScheduler(marketSentimentService, sentimentSuggestionRepository, rabbit)
+	
+	sentimentController := controller.NewSentimentController(generateSentimentUseCase, listSentimentUseCase, approveSentimentUseCase, marketSentimentService, sentimentScheduler)
 	
 	// Sentiment API endpoints
 	http.HandleFunc("/api/v1/sentiment/generate", authMiddleware.RequireAuth(sentimentController.GenerateSuggestion))
@@ -149,11 +167,23 @@ func main() {
 	http.HandleFunc("/api/v1/sentiment/approve", authMiddleware.RequireAuth(sentimentController.ApproveSuggestion))
 	http.HandleFunc("/api/v1/sentiment/analytics", authMiddleware.RequireAuth(sentimentController.GetAnalytics))
 	http.HandleFunc("/api/v1/sentiment/health", sentimentController.HealthCheck) // Public health check
+	
+	// New sentiment MVP endpoints
+	http.HandleFunc("/api/v1/sentiment/analyze", authMiddleware.RequireAuth(sentimentController.TriggerManualAnalysis))
+	http.HandleFunc("/api/v1/sentiment/quick-check", authMiddleware.RequireAuth(sentimentController.QuickSentimentCheck))
+	http.HandleFunc("/api/v1/sentiment/data-sources/validate", authMiddleware.RequireAuth(sentimentController.ValidateDataSources))
+	http.HandleFunc("/api/v1/sentiment/scheduler/status", authMiddleware.RequireAuth(sentimentController.GetSchedulerStatus))
+	http.HandleFunc("/api/v1/sentiment/scheduler/trigger", authMiddleware.RequireAuth(sentimentController.TriggerScheduledAnalysis))
 
 	// Telegram test endpoints
 	telegramTestController := api.NewTelegramTestController(telegramService)
 	http.HandleFunc("/api/v1/telegram/test", telegramTestController.SendOi) // Temporary public for demo
 	http.HandleFunc("/api/v1/telegram/status", telegramTestController.Status) // Public status check
+	
+	// Telegram sentiment notification endpoints
+	telegramSentimentController := api.NewTelegramSentimentController(telegramSentimentConsumer)
+	http.HandleFunc("/api/v1/telegram/test-sentiment", authMiddleware.RequireAuth(telegramSentimentController.TestSentimentNotification))
+	http.HandleFunc("/api/v1/telegram/sentiment/status", authMiddleware.RequireAuth(telegramSentimentController.GetSentimentNotificationStatus))
 
 	// Serve static files for dashboard
 	http.Handle("/", http.FileServer(http.Dir("./web/")))
