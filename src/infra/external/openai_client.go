@@ -169,7 +169,7 @@ func (c *OpenAIClient) AnalyzeSentiment(ctx context.Context, content string) (*L
 		Messages: []Message{
 			{
 				Role:    "system",
-				Content: "You are a cryptocurrency market sentiment analyst with deep expertise in crypto markets, DeFi, regulations, and trading psychology.",
+				Content: "Você é um analista de sentimento do mercado de criptomoedas com profunda expertise em mercados crypto, DeFi, regulamentações e psicologia de trading. Responda SEMPRE em português brasileiro.",
 			},
 			{
 				Role:    "user",
@@ -220,36 +220,36 @@ func (c *OpenAIClient) AnalyzeSentiment(ctx context.Context, content string) (*L
 }
 
 func (c *OpenAIClient) buildSentimentPrompt(content string) string {
-	return fmt.Sprintf(`Analyze this cryptocurrency news article and provide a structured analysis:
+	return fmt.Sprintf(`Analise esta notícia de criptomoedas e forneça uma análise estruturada EM PORTUGUÊS:
 
-ARTICLE CONTENT:
+CONTEÚDO DO ARTIGO:
 %s
 
-ANALYSIS REQUIREMENTS:
-1. Create a brief, informative summary (1-2 sentences, max 100 words)
-2. Assign a sentiment score between -1.0 and +1.0 where:
-   • +1.0 = Extremely bullish/positive for crypto market
-   • +0.5 = Moderately positive/bullish
-   • 0.0 = Neutral market impact
-   • -0.5 = Moderately negative/bearish  
-   • -1.0 = Extremely bearish/negative for crypto market
+REQUISITOS DA ANÁLISE:
+1. Crie um resumo breve e informativo (1-2 frases, máximo 100 palavras)
+2. Atribua um score de sentimento entre -1.0 e +1.0 onde:
+   • +1.0 = Extremamente otimista/positivo para o mercado crypto
+   • +0.5 = Moderadamente positivo/otimista
+   • 0.0 = Impacto neutro no mercado
+   • -0.5 = Moderadamente negativo/pessimista
+   • -1.0 = Extremamente pessimista/negativo para o mercado crypto
 
-3. Provide reasoning for your score (1-2 sentences)
+3. Forneça raciocínio para seu score (1-2 frases)
 
-IMPORTANT FACTORS TO CONSIDER:
-• Regulatory developments (positive/negative)
-• Institutional adoption and investments
-• Technical developments and innovations
-• Market sentiment and psychology
-• Trading volume and price movements
-• Security incidents or exploits
-• Macroeconomic factors affecting crypto
+FATORES IMPORTANTES A CONSIDERAR:
+• Desenvolvimentos regulatórios (positivos/negativos)
+• Adoção institucional e investimentos
+• Desenvolvimentos técnicos e inovações
+• Sentimento e psicologia do mercado
+• Volume de negociação e movimentos de preços
+• Incidentes de segurança ou exploits
+• Fatores macroeconômicos que afetam crypto
 
-OUTPUT FORMAT (respond with exactly this structure):
-Summary: [your summary here]
-Score: [numerical score between -1.0 and +1.0]
-Reasoning: [your reasoning here]
-Confidence: [confidence level 0.0-1.0]`, content)
+FORMATO DE SAÍDA (responda exatamente com esta estrutura):
+Resumo: [seu resumo aqui]
+Score: [score numérico entre -1.0 e +1.0]
+Raciocínio: [seu raciocínio aqui]
+Confiança: [nível de confiança 0.0-1.0]`, content)
 }
 
 func (c *OpenAIClient) parseAnalysisResult(content string) (*LLMAnalysisResult, error) {
