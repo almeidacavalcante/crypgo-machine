@@ -321,3 +321,95 @@ Authorization: Bearer {{authToken}}
 {
   "bot_id": "00000000-0000-0000-0000-000000000000"
 }
+
+### ========================================
+### 📊 SENTIMENT ANALYSIS MVP
+### ========================================
+
+###
+### 1. Trigger manual sentiment analysis
+POST {{baseUrl}}/api/v1/sentiment/analyze
+Authorization: Bearer {{authToken}}
+
+###
+### 2. Quick sentiment check
+POST {{baseUrl}}/api/v1/sentiment/quick-check
+Authorization: Bearer {{authToken}}
+
+###
+### 3. Get sentiment suggestions
+GET {{baseUrl}}/api/v1/sentiment/suggestions
+Authorization: Bearer {{authToken}}
+
+###
+### 4. Get sentiment suggestions with status filter
+GET {{baseUrl}}/api/v1/sentiment/suggestions?status=pending&limit=10
+Authorization: Bearer {{authToken}}
+
+###
+### 5. Generate sentiment suggestion manually
+POST {{baseUrl}}/api/v1/sentiment/generate
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "fear_greed_index": 75,
+  "news_score": 0.3,
+  "reddit_score": 0.1,
+  "social_score": 0.2,
+  "reasoning": "Manual test sentiment generation with positive market indicators"
+}
+
+###
+### 6. Approve sentiment suggestion
+POST {{baseUrl}}/api/v1/sentiment/approve
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "suggestion_id": "{{suggestionId}}",
+  "action": "approve",
+  "user_notes": "Manual approval for testing",
+  "applied_multiplier": 1.2,
+  "applied_threshold": 1.0,
+  "applied_interval": 600
+}
+
+###
+### 7. Get sentiment analytics
+GET {{baseUrl}}/api/v1/sentiment/analytics
+Authorization: Bearer {{authToken}}
+
+###
+### 8. Validate data sources
+GET {{baseUrl}}/api/v1/sentiment/data-sources/validate
+Authorization: Bearer {{authToken}}
+
+###
+### 9. Get scheduler status
+GET {{baseUrl}}/api/v1/sentiment/scheduler/status
+Authorization: Bearer {{authToken}}
+
+###
+### 10. Trigger scheduled analysis manually
+POST {{baseUrl}}/api/v1/sentiment/scheduler/trigger
+Authorization: Bearer {{authToken}}
+
+###
+### 11. Sentiment health check
+GET {{baseUrl}}/api/v1/sentiment/health
+Authorization: Bearer {{authToken}}
+
+### ========================================
+### 📱 TELEGRAM SENTIMENT NOTIFICATIONS
+### ========================================
+
+###
+### 1. Test sentiment notification
+POST {{baseUrl}}/api/v1/telegram/test-sentiment
+Authorization: Bearer {{authToken}}
+
+###
+### 2. Get sentiment notification status
+GET {{baseUrl}}/api/v1/telegram/sentiment/status
+Authorization: Bearer {{authToken}}
