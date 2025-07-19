@@ -159,6 +159,17 @@ func main() {
 	marketSentimentService := service.NewMarketSentimentService()
 	sentimentScheduler := scheduler.NewSentimentScheduler(marketSentimentService, sentimentSuggestionRepository, rabbit)
 	
+	// Telegram Bot Handler for interactive commands
+	telegramBotHandler := notification.NewTelegramBotHandler(telegramService, marketSentimentService)
+	go func() {
+		err := telegramBotHandler.Start()
+		if err != nil {
+			log.Printf("❌ Error starting Telegram bot handler: %v", err)
+		} else {
+			fmt.Println("✅ Telegram bot handler started successfully.")
+		}
+	}()
+	
 	sentimentController := controller.NewSentimentController(generateSentimentUseCase, listSentimentUseCase, approveSentimentUseCase, marketSentimentService, sentimentScheduler)
 	
 	// Sentiment API endpoints
