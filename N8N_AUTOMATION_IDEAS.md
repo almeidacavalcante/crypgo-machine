@@ -52,13 +52,262 @@ Este documento apresenta ideias e casos de uso para automações usando N8N no c
   4. Gerar gráficos automáticos
   5. Compartilhar relatório via email
 
-#### B. Análise de Market Sentiment
-- **Dados coletados**:
-  - Fear & Greed Index
-  - Twitter sentiment para Bitcoin
-  - News sentiment (CoinDesk, CoinTelegraph)
-  - Reddit r/cryptocurrency sentiment
-- **Ação**: Ajustar agressividade dos bots baseado no sentiment
+#### B. Análise de Market Sentiment (Detalhado)
+**Objetivo**: Coletar dados de sentimento do mercado crypto via scraping/RSS para ajustar automaticamente a agressividade dos bots.
+
+##### 📊 **Fontes de Dados (Sem APIs Pagas)**
+
+###### 1. **Fear & Greed Index**
+- **URL**: `https://api.alternative.me/fng/`
+- **Método**: HTTP GET simples (API pública gratuita)
+- **Frequência**: Diária
+- **Dados**: Índice 0-100 (Extreme Fear → Extreme Greed)
+- **N8N Node**: HTTP Request → JSON parse
+```json
+{
+  "name": "Fear and Greed Index",
+  "data": [{"value": "25", "value_classification": "Extreme Fear"}]
+}
+```
+
+###### 2. **News Sentiment via RSS Feeds**
+- **CoinDesk RSS**: `https://www.coindesk.com/arc/outboundfeeds/rss/`
+- **CoinTelegraph RSS**: `https://cointelegraph.com/rss`
+- **Bitcoin.com RSS**: `https://news.bitcoin.com/feed/`
+- **Decrypt RSS**: `https://decrypt.co/feed`
+- **Método**: RSS Reader → Text Analysis
+- **Frequência**: A cada 2-4 horas
+- **Sentiment**: Palavras-chave positivas/negativas
+
+**Palavras-chave Sentiment Analysis**:
+```javascript
+// Positivas: "bullish", "rally", "surge", "adoption", "institutional"
+// Negativas: "crash", "dump", "regulation", "ban", "bearish"
+// Neutras: "analysis", "prediction", "market", "trading"
+```
+
+###### 3. **Reddit r/cryptocurrency via RSS**
+- **URL**: `https://www.reddit.com/r/cryptocurrency/hot/.rss`
+- **Posts populares**: `https://www.reddit.com/r/cryptocurrency/top/.rss?t=day`
+- **Método**: RSS Feed → Title/Description parsing
+- **Frequência**: A cada hora
+- **Sentiment**: Análise de títulos + score (upvotes/downvotes ratio)
+
+###### 4. **Social Media Alternatives (Sem Contas Dev)**
+
+**Google Trends (Crypto Keywords)**:
+- **URL**: `https://trends.google.com/trends/trendingsearches/daily/rss?geo=US`
+- **Keywords**: "Bitcoin", "Crypto", "Ethereum"
+- **Método**: RSS + keyword matching
+
+**YouTube Sentiment (Via RSS)**:
+- **Channels RSS**: 
+  - Coin Bureau: `https://www.youtube.com/feeds/videos.xml?channel_id=UCqK_GSMbpiV8spgD3ZGloSw`
+  - Benjamin Cowen: `https://www.youtube.com/feeds/videos.xml?channel_id=UCRvqjQPSeaWn-uEx-w0XOIg`
+- **Análise**: Títulos dos vídeos recentes
+
+**Alternative Social Platforms**:
+- **Mastodon Hashtags**: `https://mastodon.social/tags/bitcoin.rss`
+- **Telegram Public Channels**: Via web scraping
+
+##### 🔧 **Implementação N8N Workflow**
+
+###### **Workflow Principal: "Crypto Sentiment Aggregator"**
+
+```mermaid
+graph LR
+    A[Cron Trigger 4h] --> B[Fear & Greed API]
+    A --> C[RSS Feeds Batch]
+    A --> D[Reddit RSS]
+    B --> E[Sentiment Calculator]
+    C --> F[News Text Analysis]
+    D --> G[Reddit Score Analysis]
+    F --> E
+    G --> E
+    E --> H[CrypGo Bot Adjustment]
+    E --> I[Telegram Alert]
+```
+
+###### **N8N Nodes Sequence**:
+
+1. **Schedule Trigger**: A cada 4 horas
+2. **HTTP Request (Fear & Greed)**:
+   ```json
+   {
+     "method": "GET",
+     "url": "https://api.alternative.me/fng/",
+     "headers": {"User-Agent": "CrypGo-Sentiment-Bot"}
+   }
+   ```
+
+3. **RSS Feed Reader (Multiple)**:
+   ```javascript
+   // URLs para loop
+   const rssFeeds = [
+     'https://www.coindesk.com/arc/outboundfeeds/rss/',
+     'https://cointelegraph.com/rss',
+     'https://www.reddit.com/r/cryptocurrency/hot/.rss'
+   ];
+   ```
+
+4. **Text Analysis Function**:
+   ```javascript
+   function analyzeSentiment(text) {
+     const positive = ['bullish', 'rally', 'surge', 'moon', 'pump', 'adoption'];
+     const negative = ['bearish', 'crash', 'dump', 'bear', 'regulation', 'ban'];
+     
+     let score = 0;
+     positive.forEach(word => {
+       score += (text.toLowerCase().match(new RegExp(word, 'g')) || []).length;
+     });
+     negative.forEach(word => {
+       score -= (text.toLowerCase().match(new RegExp(word, 'g')) || []).length;
+     });
+     
+     return {
+       score: score,
+       sentiment: score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral'
+     };
+   }
+   ```
+
+5. **Sentiment Aggregator**:
+   ```javascript
+   function calculateOverallSentiment(fearGreed, newsScore, redditScore) {
+     // Fear & Greed: 0-100 (convert to -1 to 1)
+     const fgScore = (fearGreed - 50) / 50;
+     
+     // Weighted average
+     const weights = { fearGreed: 0.4, news: 0.35, reddit: 0.25 };
+     
+     const overall = (fgScore * weights.fearGreed) + 
+                    (newsScore * weights.news) + 
+                    (redditScore * weights.reddit);
+     
+     return {
+       score: overall,
+       level: overall > 0.3 ? 'very_bullish' : 
+              overall > 0.1 ? 'bullish' : 
+              overall < -0.3 ? 'very_bearish' : 
+              overall < -0.1 ? 'bearish' : 'neutral'
+     };
+   }
+   ```
+
+##### 🤖 **Ações Baseadas no Sentiment**
+
+###### **Bot Behavior Adjustment**:
+
+```javascript
+// Sentiment → Bot Aggressiveness Mapping
+const sentimentActions = {
+  'very_bullish': {
+    trade_amount_multiplier: 1.5,
+    minimum_profit_threshold: 0.8, // Menos conservador
+    interval_seconds: 300, // Mais frequente (5min)
+    action: 'increase_exposure'
+  },
+  'bullish': {
+    trade_amount_multiplier: 1.2,
+    minimum_profit_threshold: 1.0,
+    interval_seconds: 600, // 10min
+    action: 'normal_plus'
+  },
+  'neutral': {
+    trade_amount_multiplier: 1.0,
+    minimum_profit_threshold: 1.5,
+    interval_seconds: 900, // 15min - padrão
+    action: 'maintain'
+  },
+  'bearish': {
+    trade_amount_multiplier: 0.7,
+    minimum_profit_threshold: 2.0, // Mais conservador
+    interval_seconds: 1800, // 30min
+    action: 'reduce_exposure'
+  },
+  'very_bearish': {
+    trade_amount_multiplier: 0.4,
+    minimum_profit_threshold: 3.0,
+    interval_seconds: 3600, // 1h
+    action: 'minimal_exposure'
+  }
+};
+```
+
+###### **CrypGo API Integration**:
+```http
+POST http://trading.almeidacavalcante.com/api/v1/bots/sentiment-adjust
+Content-Type: application/json
+Authorization: Bearer {jwt_token}
+
+{
+  "sentiment_level": "bullish",
+  "trade_amount_multiplier": 1.2,
+  "minimum_profit_threshold": 1.0,
+  "interval_adjustment": 600,
+  "reason": "Market sentiment analysis: Fear&Greed=65, News=+0.3, Reddit=+0.1"
+}
+```
+
+##### 📱 **Notificações e Dashboards**
+
+###### **Telegram Alerts**:
+```
+🎯 *Sentiment Update* - 14:30 UTC
+
+📊 *Overall*: BULLISH (+0.25)
+😨 *Fear & Greed*: 68 (Greed)
+📰 *News*: +0.3 (Positive coverage)
+🔥 *Reddit*: +0.1 (Moderate optimism)
+
+🤖 *Bot Action*: Increased exposure +20%
+⚡ *Frequency*: 10min intervals
+💰 *Profit Target*: 1.0% (less conservative)
+
+#CrypGo #SentimentAnalysis
+```
+
+###### **Google Sheets Dashboard**:
+- **Coluna A**: Timestamp
+- **Coluna B**: Fear & Greed Index
+- **Coluna C**: News Sentiment Score
+- **Coluna D**: Reddit Sentiment Score  
+- **Coluna E**: Overall Sentiment
+- **Coluna F**: Bot Action Taken
+- **Coluna G**: Performance Impact
+
+##### 🔄 **Workflow Schedule & Backup**
+
+###### **Frequências Otimizadas**:
+- **Fear & Greed**: 1x/dia (12:00 UTC)
+- **News RSS**: A cada 4h
+- **Reddit**: A cada 2h
+- **Emergency Check**: Se volatilidade > 10% em 1h
+
+###### **Fallback Sources**:
+- Se RSS falhar → Scraping direto (BeautifulSoup via N8N)
+- Se Fear & Greed indisponível → Usar apenas News+Reddit
+- Se tudo falhar → Modo conservador automático
+
+##### 📈 **Backtesting & Validation**
+
+###### **Métricas de Performance**:
+```javascript
+// Tracking sentiment accuracy
+const sentimentMetrics = {
+  sentiment_vs_price_correlation: 0.0, // -1 to 1
+  false_signals_rate: 0.0, // %
+  profitable_adjustments_rate: 0.0, // %
+  avg_improvement_vs_baseline: 0.0 // %
+};
+```
+
+##### 🛠️ **Implementação Prática**
+
+**Fase 1**: Fear & Greed + RSS básico
+**Fase 2**: Reddit integration + sentiment analysis
+**Fase 3**: Advanced text analysis + ML sentiment
+**Fase 4**: Backtest validation + auto-tuning
 
 #### C. Comparação com Benchmarks
 - **Workflow**:
