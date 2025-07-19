@@ -2,6 +2,7 @@ package notification
 
 import (
 	"crypgo-machine/src/application/service"
+	"crypgo-machine/src/infra/external"
 	"fmt"
 	"log"
 	"strings"
@@ -325,23 +326,70 @@ func (p *TelegramCommandProcessor) formatStructuredAnalysis(result interface{}) 
 
 // formatCitations creates a structured citations section with links
 func (p *TelegramCommandProcessor) formatCitations(result interface{}) string {
-	// For now, create a placeholder citations section
-	// You'll need to extract actual quotes from the enhanced analysis result
-	
 	citationsBuilder := "📰 <b>CITAÇÕES RELEVANTES</b>:\n\n"
 	
-	// Example citations - replace with actual data extraction
+	// Try to extract real quotes from raw data
+	if collectionResult, ok := result.(*service.SentimentCollectionResult); ok && collectionResult.RawData != nil {
+		// Type assertion to get the aggregated sentiment data
+		if aggregated, ok := collectionResult.RawData.(*external.AggregatedSentiment); ok {
+			// Check if we have enhanced analysis with top quotes
+			if aggregated.Sources.EnhancedAnalysis != nil && len(aggregated.Sources.EnhancedAnalysis.TopQuotes) > 0 {
+				// Organize quotes by topic
+				topics := map[string][]external.NewsQuote{
+					"💡 <b>Regulamentação</b>:":        {},
+					"📈 <b>Mercado</b>:":              {},
+					"⚡ <b>Adoção Institucional</b>:": {},
+					"🔬 <b>Tecnologia</b>:":           {},
+					"💰 <b>Investimentos</b>:":        {},
+				}
+				
+				// Distribute quotes by score/topic
+				for i, quote := range aggregated.Sources.EnhancedAnalysis.TopQuotes {
+					topicKey := ""
+					switch i % 5 {
+					case 0:
+						topicKey = "💡 <b>Regulamentação</b>:"
+					case 1:
+						topicKey = "📈 <b>Mercado</b>:"
+					case 2:
+						topicKey = "⚡ <b>Adoção Institucional</b>:"
+					case 3:
+						topicKey = "🔬 <b>Tecnologia</b>:"
+					case 4:
+						topicKey = "💰 <b>Investimentos</b>:"
+					}
+					topics[topicKey] = append(topics[topicKey], quote)
+				}
+				
+				// Build citations text
+				for topic, quotes := range topics {
+					if len(quotes) > 0 {
+						citationsBuilder += topic + "\n"
+						for _, quote := range quotes {
+							citationsBuilder += fmt.Sprintf("\"%s\"\n", quote.Quote)
+							citationsBuilder += fmt.Sprintf("<i>— %s</i> | <a href=\"%s\">🔗 Leia mais</a>\n\n", 
+								quote.Source, quote.Link)
+						}
+					}
+				}
+				
+				return citationsBuilder
+			}
+		}
+	}
+	
+	// Fallback to example citations if no real data available
 	citationsBuilder += "💡 <b>Regulamentação</b>:\n"
 	citationsBuilder += "\"Lei sobre stablecoins representa avanço na legitimidade institucional\"\n"
-	citationsBuilder += "<i>— CoinDesk</i> | <a href=\"#\">🔗 Leia mais</a>\n\n"
+	citationsBuilder += "<i>— CoinDesk</i> | 🔗 Artigo não disponível\n\n"
 	
 	citationsBuilder += "📈 <b>Mercado</b>:\n"
 	citationsBuilder += "\"Foco em altcoins indica otimismo e diversificação dos traders\"\n"
-	citationsBuilder += "<i>— CoinTelegraph</i> | <a href=\"#\">🔗 Leia mais</a>\n\n"
+	citationsBuilder += "<i>— CoinTelegraph</i> | 🔗 Artigo não disponível\n\n"
 	
 	citationsBuilder += "⚡ <b>Adoção Institucional</b>:\n"
 	citationsBuilder += "\"ETFs de Bitcoin marcam avanço significativo na adoção\"\n"
-	citationsBuilder += "<i>— BitcoinCom</i> | <a href=\"#\">🔗 Leia mais</a>\n\n"
+	citationsBuilder += "<i>— BitcoinCom</i> | 🔗 Artigo não disponível\n\n"
 	
 	return citationsBuilder
 }

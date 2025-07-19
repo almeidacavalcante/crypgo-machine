@@ -17,6 +17,7 @@ type SentimentCollectionResult struct {
 	Sources    *vo.SentimentSources
 	Reasoning  string
 	Confidence float64
+	RawData    interface{} // Store raw aggregated data for enhanced display
 }
 
 func NewMarketSentimentService() *MarketSentimentService {
@@ -50,6 +51,7 @@ func (s *MarketSentimentService) CollectMarketSentiment() (*SentimentCollectionR
 		Sources:    sources,
 		Reasoning:  aggregated.Reasoning,
 		Confidence: aggregated.Confidence,
+		RawData:    aggregated,
 	}, nil
 }
 
@@ -75,6 +77,7 @@ func (s *MarketSentimentService) QuickSentimentCheck() (*SentimentCollectionResu
 		Sources:    sources,
 		Reasoning:  aggregated.Reasoning,
 		Confidence: aggregated.Confidence,
+		RawData:    aggregated,
 	}, nil
 }
 
