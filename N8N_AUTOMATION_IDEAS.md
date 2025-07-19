@@ -194,87 +194,190 @@ graph LR
    }
    ```
 
-##### 🤖 **Ações Baseadas no Sentiment**
+##### 🤖 **Sugestões Baseadas no Sentiment (Consultivo)**
 
-###### **Bot Behavior Adjustment**:
+> **⚠️ IMPORTANTE**: O sistema **NÃO executa** mudanças automaticamente. Apenas **sugere** ajustes que devem ser **aprovados manualmente** pelo usuário.
+
+###### **Sugestões de Ajuste por Sentiment**:
 
 ```javascript
-// Sentiment → Bot Aggressiveness Mapping
-const sentimentActions = {
+// Sentiment → Sugestões de Ajuste (CONSULTIVO)
+const sentimentSuggestions = {
   'very_bullish': {
-    trade_amount_multiplier: 1.5,
-    minimum_profit_threshold: 0.8, // Menos conservador
-    interval_seconds: 300, // Mais frequente (5min)
-    action: 'increase_exposure'
+    suggested_trade_amount_multiplier: 1.5,
+    suggested_minimum_profit_threshold: 0.8, // Menos conservador
+    suggested_interval_seconds: 300, // Mais frequente (5min)
+    recommendation: 'increase_exposure',
+    reasoning: 'Market muito otimista - considere aumentar exposição'
   },
   'bullish': {
-    trade_amount_multiplier: 1.2,
-    minimum_profit_threshold: 1.0,
-    interval_seconds: 600, // 10min
-    action: 'normal_plus'
+    suggested_trade_amount_multiplier: 1.2,
+    suggested_minimum_profit_threshold: 1.0,
+    suggested_interval_seconds: 600, // 10min
+    recommendation: 'normal_plus',
+    reasoning: 'Sentiment positivo - ligeiro aumento na agressividade'
   },
   'neutral': {
-    trade_amount_multiplier: 1.0,
-    minimum_profit_threshold: 1.5,
-    interval_seconds: 900, // 15min - padrão
-    action: 'maintain'
+    suggested_trade_amount_multiplier: 1.0,
+    suggested_minimum_profit_threshold: 1.5,
+    suggested_interval_seconds: 900, // 15min - padrão
+    recommendation: 'maintain',
+    reasoning: 'Sentiment neutro - manter configurações atuais'
   },
   'bearish': {
-    trade_amount_multiplier: 0.7,
-    minimum_profit_threshold: 2.0, // Mais conservador
-    interval_seconds: 1800, // 30min
-    action: 'reduce_exposure'
+    suggested_trade_amount_multiplier: 0.7,
+    suggested_minimum_profit_threshold: 2.0, // Mais conservador
+    suggested_interval_seconds: 1800, // 30min
+    recommendation: 'reduce_exposure',
+    reasoning: 'Sentiment negativo - considere reduzir exposição'
   },
   'very_bearish': {
-    trade_amount_multiplier: 0.4,
-    minimum_profit_threshold: 3.0,
-    interval_seconds: 3600, // 1h
-    action: 'minimal_exposure'
+    suggested_trade_amount_multiplier: 0.4,
+    suggested_minimum_profit_threshold: 3.0,
+    suggested_interval_seconds: 3600, // 1h
+    recommendation: 'minimal_exposure',
+    reasoning: 'Market muito pessimista - considere exposição mínima'
   }
 };
 ```
 
-###### **CrypGo API Integration**:
+###### **Sistema de Notificação e Aprovação**:
+
+```javascript
+// Workflow: Análise → Sugestão → Notificação → Aprovação Manual
+const notificationFlow = {
+  1: 'Coleta dados de sentiment',
+  2: 'Calcula score agregado',
+  3: 'Gera sugestões baseadas no sentiment',
+  4: 'Envia notificação com recomendações',
+  5: 'AGUARDA aprovação manual do usuário',
+  6: 'Usuário decide implementar ou ignorar'
+};
+```
+
+###### **Telegram Approval System**:
+```
+🎯 *Sentiment Analysis* - 14:30 UTC
+
+📊 *Overall Sentiment*: BULLISH (+0.25)
+😨 *Fear & Greed*: 68 (Greed)
+📰 *News Score*: +0.3 (Positive coverage)
+🔥 *Reddit Score*: +0.1 (Moderate optimism)
+
+💡 *SUGESTÕES* (para sua aprovação):
+🔸 Trade Amount: +20% (atual → sugerido: 1.2x)
+🔸 Profit Target: 1.0% (menos conservador)
+🔸 Frequency: A cada 10min (mais ativo)
+
+❓ *Aplicar sugestões?*
+✅ Aprovar Todas | 🔧 Personalizar | ❌ Ignorar
+
+*Reasoning*: Sentiment positivo indica oportunidade de aumentar ligeiramente a agressividade
+
+#CrypGo #SentimentSuggestion #ApprovalRequired
+```
+
+###### **Web Dashboard Approval Interface**:
+```javascript
+// Interface de aprovação no dashboard
+const approvalInterface = {
+  current_settings: {
+    trade_amount_multiplier: 1.0,
+    minimum_profit_threshold: 1.5,
+    interval_seconds: 900
+  },
+  sentiment_suggestions: {
+    trade_amount_multiplier: 1.2, // +20%
+    minimum_profit_threshold: 1.0, // -33%
+    interval_seconds: 600, // -33%
+    confidence_level: 0.75 // 75% confidence
+  },
+  user_actions: [
+    'approve_all',
+    'approve_selective', 
+    'ignore',
+    'customize_values'
+  ]
+};
+```
+
+###### **API Endpoint (Consultivo)**:
 ```http
-POST http://trading.almeidacavalcante.com/api/v1/bots/sentiment-adjust
-Content-Type: application/json
+GET http://trading.almeidacavalcante.com/api/v1/sentiment/suggestions
+Authorization: Bearer {jwt_token}
+
+Response:
+{
+  "sentiment_analysis": {
+    "overall_score": 0.25,
+    "level": "bullish",
+    "confidence": 0.75,
+    "sources": {
+      "fear_greed": 68,
+      "news_sentiment": 0.3,
+      "reddit_sentiment": 0.1
+    }
+  },
+  "suggestions": {
+    "trade_amount_multiplier": 1.2,
+    "minimum_profit_threshold": 1.0,
+    "interval_seconds": 600,
+    "reasoning": "Positive sentiment indicates opportunity for slightly increased aggressiveness"
+  },
+  "approval_required": true,
+  "suggested_at": "2025-07-19T14:30:00Z"
+}
+```
+
+```http
+POST http://trading.almeidacavalcante.com/api/v1/sentiment/approve
 Authorization: Bearer {jwt_token}
 
 {
-  "sentiment_level": "bullish",
-  "trade_amount_multiplier": 1.2,
-  "minimum_profit_threshold": 1.0,
-  "interval_adjustment": 600,
-  "reason": "Market sentiment analysis: Fear&Greed=65, News=+0.3, Reddit=+0.1"
+  "suggestion_id": "uuid-123",
+  "action": "approve_selective", // approve_all, approve_selective, ignore
+  "custom_values": {
+    "trade_amount_multiplier": 1.15, // User customized value
+    "minimum_profit_threshold": 1.2, // User customized value
+    "interval_seconds": 600 // Approved as suggested
+  },
+  "user_notes": "Approved with slight modifications - being more conservative on profit target"
 }
 ```
 
 ##### 📱 **Notificações e Dashboards**
 
-###### **Telegram Alerts**:
+###### **Telegram Alerts (Modelo Consultivo)**:
 ```
-🎯 *Sentiment Update* - 14:30 UTC
+🎯 *Sentiment Analysis* - 14:30 UTC
 
 📊 *Overall*: BULLISH (+0.25)
 😨 *Fear & Greed*: 68 (Greed)
 📰 *News*: +0.3 (Positive coverage)
 🔥 *Reddit*: +0.1 (Moderate optimism)
 
-🤖 *Bot Action*: Increased exposure +20%
-⚡ *Frequency*: 10min intervals
-💰 *Profit Target*: 1.0% (less conservative)
+💡 *SUGESTÕES* (aguardando sua decisão):
+🔸 Trade Amount: +20% (1.0x → 1.2x)
+🔸 Profit Target: 1.0% (mais agressivo)
+⚡ Frequency: 10min intervals (mais ativo)
 
-#CrypGo #SentimentAnalysis
+❓ Que ação você gostaria de tomar?
+📱 Responda: /approve, /customize ou /ignore
+
+#CrypGo #SentimentSuggestion #UserApprovalNeeded
 ```
 
-###### **Google Sheets Dashboard**:
+###### **Google Sheets Dashboard (Tracking Consultivo)**:
 - **Coluna A**: Timestamp
 - **Coluna B**: Fear & Greed Index
 - **Coluna C**: News Sentiment Score
 - **Coluna D**: Reddit Sentiment Score  
-- **Coluna E**: Overall Sentiment
-- **Coluna F**: Bot Action Taken
-- **Coluna G**: Performance Impact
+- **Coluna E**: Overall Sentiment Level
+- **Coluna F**: Suggested Actions
+- **Coluna G**: User Decision (Approved/Ignored/Customized)
+- **Coluna H**: Actual Values Applied
+- **Coluna I**: Performance Impact
+- **Coluna J**: User Notes/Reasoning
 
 ##### 🔄 **Workflow Schedule & Backup**
 
