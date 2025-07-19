@@ -9,6 +9,8 @@ type SentimentAggregator struct {
 	fearGreedClient *FearGreedClient
 	rssReader       *RSSFeedReader
 	analyzer        *SentimentAnalyzer
+	llmAnalyzer     *LLMSentimentAnalyzer
+	useLLM          bool
 }
 
 type AggregatedSentiment struct {
@@ -22,10 +24,13 @@ type AggregatedSentiment struct {
 }
 
 type SentimentSources struct {
-	FearGreedIndex *FearGreedData         `json:"fear_greed_index"`
-	NewsAnalysis   *NewsAnalysisResult    `json:"news_analysis"`
-	RedditScore    float64                `json:"reddit_score"`
-	WeightedScores WeightedScores         `json:"weighted_scores"`
+	FearGreedIndex     *FearGreedData              `json:"fear_greed_index"`
+	NewsAnalysis       *NewsAnalysisResult         `json:"news_analysis"`
+	EnhancedAnalysis   *EnhancedNewsAnalysisResult `json:"enhanced_analysis,omitempty"`
+	RedditScore        float64                     `json:"reddit_score"`
+	WeightedScores     WeightedScores              `json:"weighted_scores"`
+	ProcessingMethod   string                      `json:"processing_method,omitempty"`
+	AnalysisQuality    string                      `json:"analysis_quality,omitempty"`
 }
 
 type WeightedScores struct {
@@ -44,11 +49,24 @@ const (
 )
 
 func NewSentimentAggregator() *SentimentAggregator {
-	return &SentimentAggregator{
+	useLLM := getEnvBoolOrDefault("USE_LLM_ANALYSIS", true)
+	
+	aggregator := &SentimentAggregator{
 		fearGreedClient: NewFearGreedClient(),
 		rssReader:       NewRSSFeedReader(),
 		analyzer:        NewSentimentAnalyzer(),
+		useLLM:          useLLM,
 	}
+	
+	// Initialize LLM analyzer if enabled
+	if useLLM {
+		aggregator.llmAnalyzer = NewLLMSentimentAnalyzer()
+		fmt.Printf("🧠 LLM Sentiment Analysis enabled\n")
+	} else {
+		fmt.Printf("📊 Using keyword-based sentiment analysis\n")
+	}
+	
+	return aggregator
 }
 
 func (s *SentimentAggregator) CollectAndAnalyze() (*AggregatedSentiment, error) {
@@ -66,7 +84,38 @@ func (s *SentimentAggregator) CollectAndAnalyze() (*AggregatedSentiment, error) 
 		return nil, fmt.Errorf("failed to fetch RSS news: %w", err)
 	}
 	
-	newsAnalysis := s.analyzer.AnalyzeNews(recentNews)
+	// Choose analysis method based on configuration
+	var newsAnalysis NewsAnalysisResult
+	var enhancedAnalysis *EnhancedNewsAnalysisResult
+	var processingMethod, analysisQuality string
+	
+	if s.useLLM && s.llmAnalyzer != nil {
+		fmt.Printf("🧠 Analyzing %d articles with LLM...\n", len(recentNews))
+		enhanced := s.llmAnalyzer.AnalyzeNews(recentNews)
+		enhancedAnalysis = &enhanced
+		processingMethod = enhanced.ProcessingMethod
+		analysisQuality = enhanced.AnalysisQuality
+		
+		// Convert enhanced result to basic format for compatibility
+		newsAnalysis = NewsAnalysisResult{
+			OverallScore:     enhanced.OverallScore,
+			TotalArticles:    enhanced.TotalArticles,
+			PositiveArticles: enhanced.PositiveArticles,
+			NegativeArticles: enhanced.NegativeArticles,
+			NeutralArticles:  enhanced.NeutralArticles,
+			SourceBreakdown:  enhanced.SourceBreakdown,
+		}
+		
+		// Log LLM insights if available
+		if len(enhanced.KeyInsights) > 0 {
+			fmt.Printf("📈 Key insights: %v\n", enhanced.KeyInsights)
+		}
+	} else {
+		fmt.Printf("📊 Analyzing %d articles with keyword analysis...\n", len(recentNews))
+		newsAnalysis = s.analyzer.AnalyzeNews(recentNews)
+		processingMethod = "keyword"
+		analysisQuality = "medium"
+	}
 	
 	// 3. Calculate Reddit-specific score from news analysis
 	redditScore := s.extractRedditScore(&newsAnalysis)
@@ -75,8 +124,19 @@ func (s *SentimentAggregator) CollectAndAnalyze() (*AggregatedSentiment, error) 
 	aggregated := s.calculateAggregatedScore(fearGreedData, &newsAnalysis, redditScore)
 	aggregated.Timestamp = timestamp
 	
-	// 5. Generate reasoning and recommendation
-	aggregated.Reasoning = s.generateReasoning(fearGreedData, &newsAnalysis, redditScore)
+	// 5. Add enhanced analysis information if available
+	if enhancedAnalysis != nil {
+		aggregated.Sources.EnhancedAnalysis = enhancedAnalysis
+	}
+	aggregated.Sources.ProcessingMethod = processingMethod
+	aggregated.Sources.AnalysisQuality = analysisQuality
+	
+	// 6. Generate reasoning and recommendation (enhanced if LLM was used)
+	if enhancedAnalysis != nil && len(enhancedAnalysis.KeyInsights) > 0 {
+		aggregated.Reasoning = s.generateEnhancedReasoning(fearGreedData, enhancedAnalysis, redditScore)
+	} else {
+		aggregated.Reasoning = s.generateReasoning(fearGreedData, &newsAnalysis, redditScore)
+	}
 	aggregated.Recommendation = s.generateRecommendation(aggregated.OverallScore)
 	
 	return aggregated, nil
@@ -275,4 +335,61 @@ func (s *SentimentAggregator) QuickAnalysis() (*AggregatedSentiment, error) {
 		Reasoning:      fmt.Sprintf("Quick analysis based only on Fear & Greed Index: %d (%s)", fearGreedData.Value, fearGreedData.Classification),
 		Recommendation: s.generateRecommendation(fearGreedScore * 0.7),
 	}, nil
+}
+
+// generateEnhancedReasoning creates detailed reasoning using LLM insights
+func (s *SentimentAggregator) generateEnhancedReasoning(
+	fearGreed *FearGreedData,
+	enhancedAnalysis *EnhancedNewsAnalysisResult,
+	redditScore float64,
+) string {
+	reasoning := fmt.Sprintf(
+		"Market sentiment analysis based on Fear & Greed Index (%d - %s), %d news articles analyzed (%d positive, %d negative), ",
+		fearGreed.Value, fearGreed.Classification,
+		enhancedAnalysis.TotalArticles, enhancedAnalysis.PositiveArticles, enhancedAnalysis.NegativeArticles,
+	)
+	
+	// Add processing method info
+	if enhancedAnalysis.ProcessingMethod == "llm" {
+		reasoning += "analyzed with advanced LLM processing, "
+	} else {
+		reasoning += "analyzed with keyword-based method, "
+	}
+	
+	// Add Reddit sentiment
+	if redditScore > 0.1 {
+		reasoning += "positive Reddit sentiment. "
+	} else if redditScore < -0.1 {
+		reasoning += "negative Reddit sentiment. "
+	} else {
+		reasoning += "neutral Reddit sentiment. "
+	}
+	
+	// Add LLM key insights if available
+	if len(enhancedAnalysis.KeyInsights) > 0 {
+		reasoning += "Key insights: "
+		for i, insight := range enhancedAnalysis.KeyInsights {
+			if i > 0 && i < len(enhancedAnalysis.KeyInsights)-1 {
+				reasoning += ", "
+			} else if i == len(enhancedAnalysis.KeyInsights)-1 && len(enhancedAnalysis.KeyInsights) > 1 {
+				reasoning += " and "
+			}
+			reasoning += insight
+		}
+		reasoning += ". "
+	}
+	
+	// Add market context if available
+	if enhancedAnalysis.MarketContext != "" {
+		reasoning += enhancedAnalysis.MarketContext + ". "
+	}
+	
+	// Add Fear & Greed specific insights
+	if fearGreed.IsExtremeFear() {
+		reasoning += "Extreme fear levels suggest potential buying opportunity. "
+	} else if fearGreed.IsExtremeGreed() {
+		reasoning += "Extreme greed levels suggest caution and potential profit-taking. "
+	}
+	
+	return reasoning
 }
