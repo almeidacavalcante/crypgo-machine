@@ -260,8 +260,13 @@ func (c *OpenAIClient) parseAnalysisResult(content string) (*LLMAnalysisResult, 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		
-		if strings.HasPrefix(line, "Summary:") {
-			result.Summary = strings.TrimSpace(strings.TrimPrefix(line, "Summary:"))
+		// Support both English and Portuguese parsing
+		if strings.HasPrefix(line, "Summary:") || strings.HasPrefix(line, "Resumo:") {
+			if strings.HasPrefix(line, "Summary:") {
+				result.Summary = strings.TrimSpace(strings.TrimPrefix(line, "Summary:"))
+			} else {
+				result.Summary = strings.TrimSpace(strings.TrimPrefix(line, "Resumo:"))
+			}
 		} else if strings.HasPrefix(line, "Score:") {
 			scoreStr := strings.TrimSpace(strings.TrimPrefix(line, "Score:"))
 			if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
@@ -273,10 +278,19 @@ func (c *OpenAIClient) parseAnalysisResult(content string) (*LLMAnalysisResult, 
 				}
 				result.Score = score
 			}
-		} else if strings.HasPrefix(line, "Reasoning:") {
-			result.Reasoning = strings.TrimSpace(strings.TrimPrefix(line, "Reasoning:"))
-		} else if strings.HasPrefix(line, "Confidence:") {
-			confStr := strings.TrimSpace(strings.TrimPrefix(line, "Confidence:"))
+		} else if strings.HasPrefix(line, "Reasoning:") || strings.HasPrefix(line, "Raciocínio:") {
+			if strings.HasPrefix(line, "Reasoning:") {
+				result.Reasoning = strings.TrimSpace(strings.TrimPrefix(line, "Reasoning:"))
+			} else {
+				result.Reasoning = strings.TrimSpace(strings.TrimPrefix(line, "Raciocínio:"))
+			}
+		} else if strings.HasPrefix(line, "Confidence:") || strings.HasPrefix(line, "Confiança:") {
+			var confStr string
+			if strings.HasPrefix(line, "Confidence:") {
+				confStr = strings.TrimSpace(strings.TrimPrefix(line, "Confidence:"))
+			} else {
+				confStr = strings.TrimSpace(strings.TrimPrefix(line, "Confiança:"))
+			}
 			if conf, err := strconv.ParseFloat(confStr, 64); err == nil {
 				if conf > 1.0 {
 					conf = 1.0
