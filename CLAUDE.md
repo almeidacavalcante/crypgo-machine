@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Claude Code Guidance
+
+- sempre de nunca ser co author dos commits. Deixe sempre eu como o autor.
+
 ## Architecture Overview
 
 This is a cryptocurrency trading bot application built in Go using Domain-Driven Design (DDD) and Clean Architecture principles. The system integrates with Binance API for trading operations and uses PostgreSQL for persistence, RabbitMQ for message queuing, and supports multiple trading strategies.

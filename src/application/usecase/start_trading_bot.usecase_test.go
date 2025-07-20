@@ -279,36 +279,8 @@ func TestStartTradingBotUseCase_BinanceErrorHandling(t *testing.T) {
 	}
 }
 
-func TestStartTradingBotUseCase_OrderPlacement(t *testing.T) {
-	useCase, tradingBotRepo, _, binanceClient := setupStartTradingBotUseCase()
-
-	// Create and save a test trading bot
-	bot := createTestTradingBot()
-	err := tradingBotRepo.Save(bot)
-	if err != nil {
-		t.Fatalf("Failed to save bot: %v", err)
-	}
-
-	// Test successful buy order
-	success := useCase.placeBuyOrder("BTCUSDT", 0.001)
-	if !success {
-		t.Error("Expected successful buy order")
-	}
-
-	// Test failed buy order
-	binanceClient.SetShouldFailOrder(true)
-	success = useCase.placeBuyOrder("BTCUSDT", 0.001)
-	if success {
-		t.Error("Expected failed buy order")
-	}
-
-	// Reset and test sell order
-	binanceClient.SetShouldFailOrder(false)
-	success = useCase.placeSellOrder("BTCUSDT", 0.001)
-	if !success {
-		t.Error("Expected successful sell order")
-	}
-}
+// Note: Order placement tests moved to LiveTradingExecutionContext tests
+// since order logic is now centralized there with LOT_SIZE validation
 
 // Benchmark test for strategy execution
 func BenchmarkStartTradingBotUseCase_StrategyExecution(b *testing.B) {
