@@ -1,0 +1,17 @@
+{
+  "symbol": "BTCUSDT",
+  "quantity": 0.001,
+  "strategy": "RSI",
+  "strategy_params": {
+    "Period": 14,
+    "OversoldThreshold": 30.0,
+    "OverboughtThreshold": 70.0
+  },
+  "interval_seconds": 300,
+  "initial_capital": 1000.0,
+  "trade_amount": 100.0,
+  "currency": "USDT",
+  "trading_fees": 0.1,
+  "minimum_profit_threshold": 1.0,
+  "use_fixed_quantity": true
+}

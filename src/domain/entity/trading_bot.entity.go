@@ -114,11 +114,65 @@ func Restore(id *vo.EntityId, symbol vo.Symbol, quantity float64, strategy Tradi
 }
 
 func BuildStrategy(config *Strategy) (TradingStrategy, error) {
+	params := config.GetParams()
+	
 	switch config.GetName() {
 	case "MovingAverage":
-		fast, _ := config.GetParams()["FastWindow"].(float64)
-		slow, _ := config.GetParams()["SlowWindow"].(float64)
+		fast, _ := params["FastWindow"].(float64)
+		slow, _ := params["SlowWindow"].(float64)
+		
+		// Check for stoploss threshold
+		stoplossThreshold := 0.0
+		if stoploss, exists := params["StoplossThreshold"]; exists {
+			if stoplossVal, ok := stoploss.(float64); ok {
+				stoplossThreshold = stoplossVal
+			}
+		}
+		
+		// Use stoploss constructor if threshold > 0
+		if stoplossThreshold > 0 {
+			minimumSpread, _ := vo.NewMinimumSpread(0.1)
+			return NewMovingAverageStrategyWithStoploss(int(fast), int(slow), minimumSpread, stoplossThreshold), nil
+		}
+		
 		return NewMovingAverageStrategy(int(fast), int(slow)), nil
+		
+	case "RSI":
+		period, _ := params["Period"].(float64)
+		
+		// Get thresholds with defaults
+		oversoldThreshold := 30.0
+		if oversold, exists := params["OversoldThreshold"]; exists {
+			if oversoldVal, ok := oversold.(float64); ok {
+				oversoldThreshold = oversoldVal
+			}
+		}
+		
+		overboughtThreshold := 70.0
+		if overbought, exists := params["OverboughtThreshold"]; exists {
+			if overboughtVal, ok := overbought.(float64); ok {
+				overboughtThreshold = overboughtVal
+			}
+		}
+		
+		// Check for stoploss threshold
+		stoplossThreshold := 0.0
+		if stoploss, exists := params["StoplossThreshold"]; exists {
+			if stoplossVal, ok := stoploss.(float64); ok {
+				stoplossThreshold = stoplossVal
+			}
+		}
+		
+		minimumSpread, _ := vo.NewMinimumSpread(0.1)
+		
+		// Use appropriate constructor based on parameters
+		if stoplossThreshold > 0 {
+			return NewRSIStrategyWithStoploss(int(period), oversoldThreshold, overboughtThreshold, minimumSpread, stoplossThreshold), nil
+		} else if oversoldThreshold != 30.0 || overboughtThreshold != 70.0 {
+			return NewRSIStrategyWithCustomThresholds(int(period), oversoldThreshold, overboughtThreshold, minimumSpread), nil
+		} else {
+			return NewRSIStrategy(int(period)), nil
+		}
 
 	default:
 		return nil, fmt.Errorf("unknown strategy: %s", config.GetName())

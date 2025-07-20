@@ -193,3 +193,84 @@ func TestMovingAverageStrategy_ZeroMinimumProfitThreshold(t *testing.T) {
 		t.Fatalf("expected Sell (any profit >= 0), got %s", result.Decision)
 	}
 }
+
+func TestMovingAverageStrategy_Stoploss_Trigger(t *testing.T) {
+	minimumSpread, _ := vo.NewMinimumSpread(0.1)
+	strategy := NewMovingAverageStrategyWithStoploss(3, 5, minimumSpread, 5.0) // 5% stoploss
+
+	// Create klines with declining prices (should trigger stoploss)
+	klines := []vo.Kline{
+		mustKline(10), mustKline(9), mustKline(8), mustKline(7), mustKline(6),
+	}
+
+	bot := createTestBotWithMinimumProfit(1.0) // 1% min profit
+	_ = bot.GetIntoPosition()
+	bot.SetEntryPrice(10.0) // Entry at 10, current at 6 = 40% loss (> 5% stoploss)
+
+	result := strategy.Decide(klines, bot)
+
+	if result.Decision != Sell {
+		t.Errorf("Expected Sell decision for stoploss trigger, got: %s", result.Decision)
+	}
+
+	if result.AnalysisData["reason"] != "stoploss_triggered" {
+		t.Errorf("Expected stoploss_triggered reason, got: %s", result.AnalysisData["reason"])
+	}
+
+	if result.AnalysisData["stoplossThreshold"] != 5.0 {
+		t.Errorf("Expected stoploss threshold 5.0, got: %v", result.AnalysisData["stoplossThreshold"])
+	}
+}
+
+func TestMovingAverageStrategy_Stoploss_NoTrigger(t *testing.T) {
+	minimumSpread, _ := vo.NewMinimumSpread(0.1)
+	strategy := NewMovingAverageStrategyWithStoploss(3, 5, minimumSpread, 5.0) // 5% stoploss
+
+	// Create klines with mild decline (should not trigger stoploss)
+	klines := []vo.Kline{
+		mustKline(10), mustKline(9.8), mustKline(9.6), mustKline(9.7), mustKline(9.6),
+	}
+
+	bot := createTestBotWithMinimumProfit(1.0) // 1% min profit  
+	_ = bot.GetIntoPosition()
+	bot.SetEntryPrice(10.0) // Entry at 10, current at 9.6 = 4% loss (< 5% stoploss)
+
+	result := strategy.Decide(klines, bot)
+
+	if result.Decision == Sell {
+		// Check if it's a stoploss trigger (which we don't want)
+		if result.AnalysisData["reason"] == "stoploss_triggered" {
+			t.Errorf("Should not trigger stoploss for 4%% loss with 5%% threshold")
+		}
+	}
+
+	if result.AnalysisData["reason"] == "stoploss_triggered" {
+		t.Errorf("Should not trigger stoploss for 4%% loss with 5%% threshold")
+	}
+}
+
+func TestMovingAverageStrategy_Stoploss_Priority(t *testing.T) {
+	// Test that stoploss has priority over other signals
+	minimumSpread, _ := vo.NewMinimumSpread(0.1)
+	strategy := NewMovingAverageStrategyWithStoploss(3, 5, minimumSpread, 5.0) // 5% stoploss
+
+	// Create klines where fast > slow (normally would sell) AND stoploss triggers
+	klines := []vo.Kline{
+		mustKline(5), mustKline(6), mustKline(7), mustKline(8), mustKline(5), // Fast > slow but price dropped
+	}
+
+	bot := createTestBotWithMinimumProfit(1.0) // 1% min profit
+	_ = bot.GetIntoPosition()
+	bot.SetEntryPrice(10.0) // Entry at 10, current at 5 = 50% loss (>> 5% stoploss)
+
+	result := strategy.Decide(klines, bot)
+
+	if result.Decision != Sell {
+		t.Errorf("Expected Sell decision for stoploss trigger, got: %s", result.Decision)
+	}
+
+	// Should be stoploss, not normal MA signal
+	if result.AnalysisData["reason"] != "stoploss_triggered" {
+		t.Errorf("Expected stoploss_triggered reason (priority), got: %s", result.AnalysisData["reason"])
+	}
+}

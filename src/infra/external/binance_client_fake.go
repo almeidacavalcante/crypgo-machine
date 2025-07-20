@@ -11,6 +11,7 @@ type BinanceClientInterface interface {
 	NewKlinesService() KlinesServiceInterface
 	NewCreateOrderService() CreateOrderServiceInterface
 	NewGetAccountService() GetAccountServiceInterface
+	NewGetExchangeInfoService() GetExchangeInfoServiceInterface
 }
 
 // KlinesServiceInterface defines the interface for klines operations
@@ -35,6 +36,11 @@ type CreateOrderServiceInterface interface {
 // GetAccountServiceInterface defines the interface for account operations
 type GetAccountServiceInterface interface {
 	Do(context.Context) (*binance.Account, error)
+}
+
+// GetExchangeInfoServiceInterface defines the interface for exchange info operations
+type GetExchangeInfoServiceInterface interface {
+	Do(context.Context) (*binance.ExchangeInfo, error)
 }
 
 // BinanceClientFake simulates Binance API responses for testing
@@ -84,6 +90,13 @@ func (f *BinanceClientFake) NewCreateOrderService() CreateOrderServiceInterface 
 // NewGetAccountService returns a fake account service
 func (f *BinanceClientFake) NewGetAccountService() GetAccountServiceInterface {
 	return &FakeGetAccountService{
+		client: f,
+	}
+}
+
+// NewGetExchangeInfoService returns a fake exchange info service
+func (f *BinanceClientFake) NewGetExchangeInfoService() GetExchangeInfoServiceInterface {
+	return &FakeGetExchangeInfoService{
 		client: f,
 	}
 }
@@ -319,6 +332,12 @@ func (w *BinanceClientWrapper) NewGetAccountService() GetAccountServiceInterface
 	}
 }
 
+func (w *BinanceClientWrapper) NewGetExchangeInfoService() GetExchangeInfoServiceInterface {
+	return &RealGetExchangeInfoService{
+		service: w.client.NewExchangeInfoService(),
+	}
+}
+
 // RealKlinesService wraps the real binance klines service
 type RealKlinesService struct {
 	service *binance.KlinesService
@@ -388,5 +407,115 @@ type RealGetAccountService struct {
 }
 
 func (s *RealGetAccountService) Do(ctx context.Context) (*binance.Account, error) {
+	return s.service.Do(ctx)
+}
+
+// FakeGetExchangeInfoService simulates the Binance GetExchangeInfoService
+type FakeGetExchangeInfoService struct {
+	client *BinanceClientFake
+}
+
+func (s *FakeGetExchangeInfoService) Do(ctx context.Context) (*binance.ExchangeInfo, error) {
+	// Return fake exchange info with common symbols and their filters
+	return &binance.ExchangeInfo{
+		Symbols: []binance.Symbol{
+			{
+				Symbol: "BTCUSDT",
+				Status: "TRADING",
+				Filters: []map[string]interface{}{
+					{
+						"filterType": "LOT_SIZE",
+						"minQty":     "0.00001000",
+						"maxQty":     "9000.00000000",
+						"stepSize":   "0.00001000",
+					},
+					{
+						"filterType": "PRICE_FILTER",
+						"minPrice":   "0.01000000",
+						"maxPrice":   "1000000.00000000",
+						"tickSize":   "0.01000000",
+					},
+					{
+						"filterType": "MIN_NOTIONAL",
+						"minNotional": "10.00000000",
+					},
+				},
+			},
+			{
+				Symbol: "ETHUSDT",
+				Status: "TRADING",
+				Filters: []map[string]interface{}{
+					{
+						"filterType": "LOT_SIZE",
+						"minQty":     "0.00010000",
+						"maxQty":     "9000.00000000",
+						"stepSize":   "0.00010000",
+					},
+					{
+						"filterType": "PRICE_FILTER",
+						"minPrice":   "0.01000000",
+						"maxPrice":   "1000000.00000000",
+						"tickSize":   "0.01000000",
+					},
+					{
+						"filterType": "MIN_NOTIONAL",
+						"minNotional": "10.00000000",
+					},
+				},
+			},
+			{
+				Symbol: "XRPBRL",
+				Status: "TRADING",
+				Filters: []map[string]interface{}{
+					{
+						"filterType": "LOT_SIZE",
+						"minQty":     "0.10000000",
+						"maxQty":     "90000.00000000",
+						"stepSize":   "0.10000000",
+					},
+					{
+						"filterType": "PRICE_FILTER",
+						"minPrice":   "0.00100000",
+						"maxPrice":   "1000.00000000",
+						"tickSize":   "0.00100000",
+					},
+					{
+						"filterType": "MIN_NOTIONAL",
+						"minNotional": "10.00000000",
+					},
+				},
+			},
+			{
+				Symbol: "SOLBRL",
+				Status: "TRADING",
+				Filters: []map[string]interface{}{
+					{
+						"filterType": "LOT_SIZE",
+						"minQty":     "0.01000000",
+						"maxQty":     "9000.00000000",
+						"stepSize":   "0.01000000",
+					},
+					{
+						"filterType": "PRICE_FILTER",
+						"minPrice":   "0.10000000",
+						"maxPrice":   "10000.00000000",
+						"tickSize":   "0.10000000",
+					},
+					{
+						"filterType": "MIN_NOTIONAL",
+						"minNotional": "10.00000000",
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+// RealGetExchangeInfoService wraps the real binance exchange info service
+type RealGetExchangeInfoService struct {
+	service *binance.ExchangeInfoService
+}
+
+func (s *RealGetExchangeInfoService) Do(ctx context.Context) (*binance.ExchangeInfo, error) {
 	return s.service.Do(ctx)
 }
