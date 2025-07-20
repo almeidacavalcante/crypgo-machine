@@ -135,6 +135,7 @@ func (uc *BacktestStrategyUseCase) createStrategy(strategyName string, params ma
 		fastWindow := 7
 		slowWindow := 40
 		minimumSpreadValue := 0.1 // 0.1% spread requirement
+		stoplossThreshold := 0.0
 		
 		// Override with provided parameters if available
 		if params != nil {
@@ -153,6 +154,11 @@ func (uc *BacktestStrategyUseCase) createStrategy(strategyName string, params ma
 					minimumSpreadValue = msFloat
 				}
 			}
+			if st, ok := params["StoplossThreshold"]; ok {
+				if stFloat, ok := st.(float64); ok {
+					stoplossThreshold = stFloat
+				}
+			}
 		}
 		
 		// Validate parameters
@@ -169,7 +175,12 @@ func (uc *BacktestStrategyUseCase) createStrategy(strategyName string, params ma
 			return nil, fmt.Errorf("failed to create MinimumSpread: %w", err)
 		}
 		
-		return entity.NewMovingAverageStrategyWithSpread(fastWindow, slowWindow, minimumSpread), nil
+		// Create with stoploss if provided, otherwise use spread-based constructor
+		if stoplossThreshold > 0 {
+			return entity.NewMovingAverageStrategyWithStoploss(fastWindow, slowWindow, minimumSpread, stoplossThreshold), nil
+		} else {
+			return entity.NewMovingAverageStrategyWithSpread(fastWindow, slowWindow, minimumSpread), nil
+		}
 		
 	case "RSI":
 		// Default RSI parameters
@@ -244,7 +255,7 @@ func (uc *BacktestStrategyUseCase) createStrategy(strategyName string, params ma
 func (uc *BacktestStrategyUseCase) runSimulation(simulator *BacktestSimulator, historicalData []vo.Kline) error {
 	// Create a dummy trading bot for strategy decisions - SHARED across all iterations
 	symbol, _ := vo.NewSymbol("SOLBRL") // This will be overridden by the actual symbol
-	dummyBot := entity.NewTradingBot(symbol, 1.0, simulator.strategy, 60, 10000.0, 1000.0, "BRL", 0.001, 0.0, false)
+	dummyBot := entity.NewTradingBot(symbol, 1.0, simulator.strategy, 60, 10000.0, 1000.0, "BRL", 0.001, simulator.minimumProfitThreshold, false)
 
 	// CRITICAL FIX: Start the bot so it can properly track position state
 	err := dummyBot.Start()
@@ -290,8 +301,18 @@ func (uc *BacktestStrategyUseCase) runSimulation(simulator *BacktestSimulator, h
 		// Enhanced DEBUG: Log detailed state every 50 iterations
 		if i%50 == 0 {
 			if simulator.isPositioned {
-				fmt.Printf("📊 [%d] %s | Price: R$%.2f | Entry: R$%.2f | Profit: %.2f%% | Decision: %s\n",
-					i, currentTime.Format("2006-01-02 15:04"), currentPrice, dummyBot.GetEntryPrice(), potentialProfit, analysisResult.Decision)
+				// Get stoploss info from analysis data
+				stoplossThreshold := float64(0)
+				if st, ok := analysisResult.AnalysisData["stoplossThreshold"]; ok {
+					stoplossThreshold = st.(float64)
+				}
+				reason := ""
+				if r, ok := analysisResult.AnalysisData["reason"]; ok {
+					reason = r.(string)
+				}
+				
+				fmt.Printf("📊 [%d] %s | Price: R$%.2f | Entry: R$%.2f | Profit: %.2f%% | SL: %.1f%% | Decision: %s | Reason: %s\n",
+					i, currentTime.Format("2006-01-02 15:04"), currentPrice, dummyBot.GetEntryPrice(), potentialProfit, stoplossThreshold, analysisResult.Decision, reason)
 			} else {
 				fmt.Printf("📊 [%d] %s | Price: R$%.2f | No Position | Decision: %s\n",
 					i, currentTime.Format("2006-01-02 15:04"), currentPrice, analysisResult.Decision)

@@ -102,6 +102,8 @@ func (s *RSIStrategy) Decide(klines []vo.Kline, tradingBot *TradingBot) *Strateg
 
 	// Check for stoploss first if positioned and stoploss is enabled
 	if tradingBot.GetIsPositioned() && s.StoplossThreshold > 0 && possibleProfit <= -s.StoplossThreshold {
+		fmt.Printf("🚨 RSI STOPLOSS TRIGGERED! Price: %.2f | Entry: %.2f | Loss: %.2f%% | Threshold: %.2f%%\n", 
+			currentPrice, entryPrice, possibleProfit, s.StoplossThreshold)
 		decision = Sell
 		analysisData["reason"] = "stoploss_triggered"
 		return NewStrategyAnalysisResult(decision, analysisData)

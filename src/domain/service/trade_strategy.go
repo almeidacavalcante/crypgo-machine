@@ -7,8 +7,9 @@ import (
 )
 
 type MovingAverageParams struct {
-	FastWindow int
-	SlowWindow int
+	FastWindow        int
+	SlowWindow        int
+	StoplossThreshold float64
 }
 
 type RSIParams struct {
@@ -30,7 +31,15 @@ func NewTradeStrategyFactory(strategyType string, Params interface{}) (entity.Tr
 		if params.FastWindow <= 0 || params.SlowWindow <= 0 {
 			return nil, fmt.Errorf("missing or invalid fields for MovingAverage: FastWindow and SlowWindow must be > 0")
 		}
-		strategy = entity.NewMovingAverageStrategy(params.FastWindow, params.SlowWindow)
+		
+		minimumSpread, _ := vo.NewMinimumSpread(0.1)
+		
+		// Create with stoploss if provided, otherwise use default constructor
+		if params.StoplossThreshold > 0 {
+			strategy = entity.NewMovingAverageStrategyWithStoploss(params.FastWindow, params.SlowWindow, minimumSpread, params.StoplossThreshold)
+		} else {
+			strategy = entity.NewMovingAverageStrategy(params.FastWindow, params.SlowWindow)
+		}
 
 	case "RSI":
 		params, ok := Params.(RSIParams)
