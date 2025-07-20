@@ -22,14 +22,14 @@ func mustKline(close float64) vo.Kline {
 func createTestBot() *TradingBot {
 	symbol, _ := vo.NewSymbol("BTCBRL")
 	strategy := NewMovingAverageStrategy(3, 5)
-	bot := NewTradingBot(symbol, 0.001, strategy, 60, 1000.0, 100.0, "BRL", 0.1, 0.0)
+	bot := NewTradingBot(symbol, 0.001, strategy, 60, 1000.0, 100.0, "BRL", 0.1, 0.0, true)
 	return bot
 }
 
 func createTestBotWithMinimumProfit(minimumProfitThreshold float64) *TradingBot {
 	symbol, _ := vo.NewSymbol("BTCBRL")
 	strategy := NewMovingAverageStrategy(3, 5)
-	bot := NewTradingBot(symbol, 0.001, strategy, 60, 1000.0, 100.0, "BRL", 0.1, minimumProfitThreshold)
+	bot := NewTradingBot(symbol, 0.001, strategy, 60, 1000.0, 100.0, "BRL", 0.1, minimumProfitThreshold, true)
 	return bot
 }
 

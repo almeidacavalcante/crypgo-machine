@@ -21,7 +21,7 @@ func setupStartTradingBotUseCase() (*StartTradingBotUseCase, *repository.TradeBo
 func createTestTradingBot() *entity.TradingBot {
 	symbol, _ := vo.NewSymbol("BTCUSDT")
 	strategy := entity.NewMovingAverageStrategy(7, 40)
-	bot := entity.NewTradingBot(symbol, 0.001, strategy, 60, 10000.0, 1000.0, "USDT", 0.001, 0.0)
+	bot := entity.NewTradingBot(symbol, 0.001, strategy, 60, 10000.0, 1000.0, "USDT", 0.001, 0.0, true)
 	return bot
 }
 

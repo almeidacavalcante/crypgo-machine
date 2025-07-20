@@ -4,11 +4,12 @@
 ### 📖 INSTRUÇÕES DE USO:
 ### 1. Configure http-client.env.json com suas credenciais
 ### 2. Execute PRIMEIRO o endpoint de LOGIN para obter o token
-### 3. Copie o access_token retornado e cole na variável @authToken
+### 3. O token será AUTOMATICAMENTE salvo na variável @authToken!
 ### 4. Use Ctrl+Alt+R no GoLand para executar requests rapidamente
 
 ### 🔧 CONFIGURAÇÃO DE AMBIENTE
-### Usar variáveis do http-client.env.json:
+### Usar variáveis do http-client.env.json e http-client.private.env.json:
+### O token será salvo automaticamente após o login!
 @baseUrl = {{baseUrl}}
 @email = {{email}}
 @password = {{password}}
@@ -16,9 +17,9 @@
 
 ### 📊 VARIÁVEIS ÚTEIS PARA TESTES
 ### Substitua pelos IDs reais dos bots após criá-los:
-#@BOT = 1eb8b9bf-438c-4d38-b1cb-c96f305a1425
+@BOT = 1eb8b9bf-438c-4d38-b1cb-c96f305a1425
 #@BOT = ae00a0fa-1bb7-4d71-bb56-917f540c29a1
-@BOT = d96cdc80-4057-4d29-a5a9-935bc22bef64
+#@BOT = d96cdc80-4057-4d29-a5a9-935bc22bef64
 
 ### ========================================
 ### 🔐 AUTENTICAÇÃO (EXECUTE PRIMEIRO!)
@@ -33,6 +34,18 @@ Content-Type: application/json
   "email": "{{email}}",
   "password": "{{password}}"
 }
+
+> {%
+    // Script para salvar automaticamente o token após login
+    if (response.status === 200) {
+        client.global.set("authToken", response.body.access_token);
+        client.log("✅ Token salvo automaticamente!");
+        client.log("Token: " + response.body.access_token);
+    } else {
+        client.log("❌ Erro no login: " + response.status);
+    }
+%}
+
 
 ###
 ### 2. Validar token (opcional)
@@ -115,7 +128,7 @@ Authorization: Bearer {{authToken}}
   "initial_capital": 5000.0,
   "trade_amount": 5000.0,
   "currency": "BRL",
-  "trading_fees": 0.01,
+  "trading_fees": 0.001,
   "minimum_profit_threshold": 4.0
 }
 
@@ -137,7 +150,7 @@ Authorization: Bearer {{authToken}}
   "initial_capital": 1000.0,
   "trade_amount": 150.0,
   "currency": "BRL",
-  "trading_fees": 0.01,
+  "trading_fees": 0.001,
   "minimum_profit_threshold": 2.0
 }
 
@@ -159,7 +172,7 @@ Authorization: Bearer {{authToken}}
   "initial_capital": 1000.0,
   "trade_amount": 200.0,
   "currency": "BRL",
-  "trading_fees": 0.01,
+  "trading_fees": 0.001,
   "minimum_profit_threshold": 3.0
 }
 
@@ -182,7 +195,7 @@ Authorization: Bearer {{authToken}}
   "initial_capital": 2000.0,
   "trade_amount": 500.0,
   "currency": "BRL",
-  "trading_fees": 0.01,
+  "trading_fees": 0.001,
   "minimum_profit_threshold": 3.0
 }
 
@@ -286,7 +299,7 @@ Authorization: Bearer {{authToken}}
   "initial_capital": 5000.0,
   "trade_amount": 5000.0,
   "currency": "BRL",
-  "trading_fees": 0.01,
+  "trading_fees": 0.001,
   "minimum_profit_threshold": 5.0
 }
 
@@ -308,7 +321,7 @@ Authorization: Bearer {{authToken}}
   "initial_capital": -1000.0,
   "trade_amount": 0,
   "currency": "BRL",
-  "trading_fees": 0.01,
+  "trading_fees": 0.001,
   "minimum_profit_threshold": -2.0
 }
 

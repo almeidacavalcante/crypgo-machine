@@ -178,7 +178,7 @@ func (uc *BacktestStrategyUseCase) createStrategy(strategyName string, params ma
 func (uc *BacktestStrategyUseCase) runSimulation(simulator *BacktestSimulator, historicalData []vo.Kline) error {
 	// Create a dummy trading bot for strategy decisions - SHARED across all iterations
 	symbol, _ := vo.NewSymbol("SOLBRL") // This will be overridden by the actual symbol
-	dummyBot := entity.NewTradingBot(symbol, 1.0, simulator.strategy, 60, 10000.0, 1000.0, "BRL", 0.001, 0.0)
+	dummyBot := entity.NewTradingBot(symbol, 1.0, simulator.strategy, 60, 10000.0, 1000.0, "BRL", 0.001, 0.0, false)
 
 	// CRITICAL FIX: Start the bot so it can properly track position state
 	err := dummyBot.Start()

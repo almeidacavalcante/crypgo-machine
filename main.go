@@ -79,7 +79,7 @@ func main() {
 			fmt.Println("✅ Telegram notification consumer started successfully.")
 		}
 	}()
-	
+
 	// Telegram sentiment notification consumer
 	telegramSentimentConsumer := notification.NewTelegramSentimentConsumer(rabbit, "trading_bot", "telegram.sentiment.queue", telegramService)
 	go func() {
@@ -96,10 +96,10 @@ func main() {
 	if jwtSecret == "" {
 		jwtSecret = "crypgo-super-secret-key-2024-production" // fallback - change in production
 	}
-	
+
 	validEmail := "jalmeidacn@gmail.com"
 	validPassword := "CrypGo2024#StrongPass!" // Strong password
-	
+
 	jwtService := auth.NewJWTService(jwtSecret, "crypgo-machine")
 	authUseCase := usecase.NewAuthUseCase(jwtService, validEmail, validPassword)
 	authController := api.NewAuthController(authUseCase)
@@ -108,7 +108,7 @@ func main() {
 	// Public routes
 	healthController := api.NewHealthController()
 	http.HandleFunc("/api/v1/health", healthController.Health)
-	
+
 	// Public auth routes
 	http.HandleFunc("/api/v1/auth/login", authController.Login)
 	http.HandleFunc("/api/v1/auth/refresh", authController.RefreshToken)
@@ -154,11 +154,11 @@ func main() {
 	generateSentimentUseCase := usecase.NewGenerateSentimentSuggestionUseCase(sentimentSuggestionRepository)
 	listSentimentUseCase := usecase.NewListSentimentSuggestionsUseCase(sentimentSuggestionRepository)
 	approveSentimentUseCase := usecase.NewApproveSentimentSuggestionUseCase(sentimentSuggestionRepository, tradingBotRepository)
-	
+
 	// Market sentiment service and scheduler (with repository for auto-saving)
 	marketSentimentService := service.NewMarketSentimentServiceWithRepository(sentimentSuggestionRepository)
 	sentimentScheduler := scheduler.NewSentimentScheduler(marketSentimentService, sentimentSuggestionRepository, rabbit)
-	
+
 	// Telegram Bot Handler for interactive commands
 	telegramBotHandler := notification.NewTelegramBotHandler(telegramService, marketSentimentService)
 	go func() {
@@ -169,16 +169,16 @@ func main() {
 			fmt.Println("✅ Telegram bot handler started successfully.")
 		}
 	}()
-	
+
 	sentimentController := controller.NewSentimentController(generateSentimentUseCase, listSentimentUseCase, approveSentimentUseCase, marketSentimentService, sentimentScheduler)
-	
+
 	// Sentiment API endpoints
 	http.HandleFunc("/api/v1/sentiment/generate", authMiddleware.RequireAuth(sentimentController.GenerateSuggestion))
 	http.HandleFunc("/api/v1/sentiment/suggestions", authMiddleware.RequireAuth(sentimentController.ListSuggestions))
 	http.HandleFunc("/api/v1/sentiment/approve", authMiddleware.RequireAuth(sentimentController.ApproveSuggestion))
 	http.HandleFunc("/api/v1/sentiment/analytics", authMiddleware.RequireAuth(sentimentController.GetAnalytics))
 	http.HandleFunc("/api/v1/sentiment/health", sentimentController.HealthCheck) // Public health check
-	
+
 	// New sentiment MVP endpoints
 	http.HandleFunc("/api/v1/sentiment/analyze", authMiddleware.RequireAuth(sentimentController.TriggerManualAnalysis))
 	http.HandleFunc("/api/v1/sentiment/quick-check", authMiddleware.RequireAuth(sentimentController.QuickSentimentCheck))
@@ -188,9 +188,9 @@ func main() {
 
 	// Telegram test endpoints
 	telegramTestController := api.NewTelegramTestController(telegramService)
-	http.HandleFunc("/api/v1/telegram/test", telegramTestController.SendOi) // Temporary public for demo
+	http.HandleFunc("/api/v1/telegram/test", telegramTestController.SendOi)   // Temporary public for demo
 	http.HandleFunc("/api/v1/telegram/status", telegramTestController.Status) // Public status check
-	
+
 	// Telegram sentiment notification endpoints
 	telegramSentimentController := api.NewTelegramSentimentController(telegramSentimentConsumer)
 	http.HandleFunc("/api/v1/telegram/test-sentiment", authMiddleware.RequireAuth(telegramSentimentController.TestSentimentNotification))
@@ -240,9 +240,9 @@ func recoverRunningBots(tradingBotRepository repository.TradingBotRepository, st
 	for _, bot := range runningBots {
 		botId := bot.Id.GetValue()
 		symbol := bot.GetSymbol().GetValue()
-		
+
 		fmt.Printf("⚡ Recovering bot %s (%s)...\n", botId, symbol)
-		
+
 		// For auto-recovery, we need to reset the bot status to STOPPED first
 		// because the server restart killed the actual trading loops but left the status as RUNNING
 		if err := bot.Stop(); err != nil {
@@ -250,19 +250,19 @@ func recoverRunningBots(tradingBotRepository repository.TradingBotRepository, st
 			errorCount++
 			continue
 		}
-		
+
 		// Update the bot status in database
 		if err := tradingBotRepository.Update(bot); err != nil {
 			fmt.Printf("❌ Failed to update bot status for recovery %s (%s): %v\n", botId, symbol, err)
 			errorCount++
 			continue
 		}
-		
+
 		// Now use existing StartTradingBotUseCase to restart the bot
 		input := usecase.InputStartTradingBot{
 			TradingBotId: botId,
 		}
-		
+
 		if err := startTradingBotUseCase.Execute(input); err != nil {
 			fmt.Printf("❌ Failed to recover bot %s (%s): %v\n", botId, symbol, err)
 			errorCount++
@@ -274,10 +274,10 @@ func recoverRunningBots(tradingBotRepository repository.TradingBotRepository, st
 
 	// Summary
 	fmt.Printf("📊 Auto-recovery completed: %d successful, %d failed\n", successCount, errorCount)
-	
+
 	if errorCount > 0 {
 		return fmt.Errorf("auto-recovery completed with %d errors", errorCount)
 	}
-	
+
 	return nil
 }

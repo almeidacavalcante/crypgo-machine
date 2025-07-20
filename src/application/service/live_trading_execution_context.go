@@ -44,7 +44,16 @@ func NewLiveTradingExecutionContext(
 // ExecuteTrade executes real trading orders via Binance API
 func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDecision, bot *entity.TradingBot, currentPrice float64, timestamp time.Time) error {
 	symbol := bot.GetSymbol().GetValue()
-	quantity := bot.GetQuantity()
+	
+	// Calculate quantity based on useFixedQuantity flag
+	var quantity float64
+	if bot.GetUseFixedQuantity() {
+		// Use fixed quantity from bot configuration
+		quantity = bot.GetQuantity()
+	} else {
+		// Calculate dynamic quantity based on trade amount and current price
+		quantity = bot.GetTradeAmount() / currentPrice
+	}
 
 	switch decision {
 	case entity.Buy:
@@ -57,7 +66,12 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 		if isOrderPlaced {
 			// Set entry price when entering position
 			bot.SetEntryPrice(currentPrice)
-			fmt.Printf("📈 [%s] Position opened at %.2f\n", symbol, currentPrice)
+			// Calculate actual quantity held after fees
+			feePercentage := bot.GetTradingFees() / 100.0
+			actualQuantity := quantity * (1.0 - feePercentage)
+			bot.SetActualQuantityHeld(actualQuantity)
+			fmt.Printf("📈 [%s] Position opened at %.2f (actual qty: %.6f after %.2f%% fees)\n", 
+				symbol, currentPrice, actualQuantity, bot.GetTradingFees())
 
 			errPosition := bot.GetIntoPosition()
 			if errPosition != nil {
@@ -80,15 +94,18 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			return fmt.Errorf("this trading bot don't have an open position")
 		}
 
+		// Calculate quantity for sell considering fees
+		sellQuantity := bot.CalculateQuantityForSell()
 		actualProfit := ((currentPrice - bot.GetEntryPrice()) / bot.GetEntryPrice()) * 100
 		fmt.Printf("🔴 [%s] SELL order (qty: %.6f, profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
-			symbol, quantity, actualProfit, bot.GetEntryPrice(), currentPrice)
+			symbol, sellQuantity, actualProfit, bot.GetEntryPrice(), currentPrice)
 
-		isOrderPlaced := ctx.placeSellOrder(symbol, quantity)
+		isOrderPlaced := ctx.placeSellOrder(symbol, sellQuantity)
 		if isOrderPlaced {
-			// Clear entry price when exiting position
+			// Clear entry price and actual quantity when exiting position
 			entryPrice := bot.GetEntryPrice()
 			bot.ClearEntryPrice()
+			bot.ClearActualQuantityHeld()
 			fmt.Printf("📉 [%s] Position closed\n", symbol)
 
 			errPosition := bot.GetOutOfPosition()
@@ -101,7 +118,7 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			}
 
 			// Emit sell event
-			if err := ctx.emitTradingEvent("trading.sell_executed", bot, currentPrice, quantity, entryPrice, actualProfit, timestamp); err != nil {
+			if err := ctx.emitTradingEvent("trading.sell_executed", bot, currentPrice, sellQuantity, entryPrice, actualProfit, timestamp); err != nil {
 				fmt.Printf("⚠️ Failed to emit sell event: %v\n", err)
 			}
 		}

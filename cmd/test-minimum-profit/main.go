@@ -57,7 +57,7 @@ func testWithThreshold(klines []vo.Kline, threshold float64) {
 	// Criar bot de teste
 	symbol, _ := vo.NewSymbol("BTCBRL")
 	strategy := entity.NewMovingAverageStrategy(3, 5)
-	bot := entity.NewTradingBot(symbol, 0.001, strategy, 60, 1000.0, 100.0, "BRL", 0.1, threshold)
+	bot := entity.NewTradingBot(symbol, 0.001, strategy, 60, 1000.0, 100.0, "BRL", 0.1, threshold, true)
 	
 	fmt.Printf("   Bot configurado com threshold: %.1f%%\n", threshold)
 	

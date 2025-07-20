@@ -15,12 +15,14 @@ type TradingBot struct {
 	status                 Status
 	isPositioned           bool
 	entryPrice             float64 // Price when position was opened
+	actualQuantityHeld     float64 // Actual quantity held after fees (for sell orders)
 	intervalSeconds        int
 	initialCapital         float64
 	tradeAmount            float64
 	currency               string
 	tradingFees            float64
 	minimumProfitThreshold float64
+	useFixedQuantity       bool    // true = use quantity field, false = use tradeAmount to calculate dynamic quantity
 	createdAt              time.Time
 }
 
@@ -33,12 +35,14 @@ type TradingBotDTO struct {
 	Status                 string      `json:"status"`
 	IsPositioned           bool        `json:"is_positioned"`
 	EntryPrice             *float64    `json:"entry_price"`
+	ActualQuantityHeld     float64     `json:"actual_quantity_held"`
 	IntervalSeconds        int         `json:"interval_seconds"`
 	InitialCapital         float64     `json:"initial_capital"`
 	TradeAmount            float64     `json:"trade_amount"`
 	Currency               string      `json:"currency"`
 	TradingFees            float64     `json:"trading_fees"`
 	MinimumProfitThreshold float64     `json:"minimum_profit_threshold"`
+	UseFixedQuantity       bool        `json:"use_fixed_quantity"`
 	CreatedAt              time.Time   `json:"created_at"`
 }
 
@@ -57,17 +61,19 @@ func (b *TradingBot) ToDTO() TradingBotDTO {
 		Status:                 string(b.status),
 		IsPositioned:           b.isPositioned,
 		EntryPrice:             entryPrice,
+		ActualQuantityHeld:     b.actualQuantityHeld,
 		IntervalSeconds:        b.intervalSeconds,
 		InitialCapital:         b.initialCapital,
 		TradeAmount:            b.tradeAmount,
 		Currency:               b.currency,
 		TradingFees:            b.tradingFees,
 		MinimumProfitThreshold: b.minimumProfitThreshold,
+		UseFixedQuantity:       b.useFixedQuantity,
 		CreatedAt:              b.createdAt,
 	}
 }
 
-func NewTradingBot(symbol vo.Symbol, quantity float64, strategy TradingStrategy, intervalSeconds int, initialCapital float64, tradeAmount float64, currency string, tradingFees float64, minimumProfitThreshold float64) *TradingBot {
+func NewTradingBot(symbol vo.Symbol, quantity float64, strategy TradingStrategy, intervalSeconds int, initialCapital float64, tradeAmount float64, currency string, tradingFees float64, minimumProfitThreshold float64, useFixedQuantity bool) *TradingBot {
 	return &TradingBot{
 		Id:                     vo.NewEntityId(),
 		symbol:                 symbol,
@@ -81,11 +87,12 @@ func NewTradingBot(symbol vo.Symbol, quantity float64, strategy TradingStrategy,
 		currency:               currency,
 		tradingFees:            tradingFees,
 		minimumProfitThreshold: minimumProfitThreshold,
+		useFixedQuantity:       useFixedQuantity,
 		createdAt:              time.Now(),
 	}
 }
 
-func Restore(id *vo.EntityId, symbol vo.Symbol, quantity float64, strategy TradingStrategy, status Status, isPositioned bool, intervalSeconds int, initialCapital float64, tradeAmount float64, currency string, tradingFees float64, minimumProfitThreshold float64, entryPrice float64, createdAt time.Time) *TradingBot {
+func Restore(id *vo.EntityId, symbol vo.Symbol, quantity float64, strategy TradingStrategy, status Status, isPositioned bool, intervalSeconds int, initialCapital float64, tradeAmount float64, currency string, tradingFees float64, minimumProfitThreshold float64, entryPrice float64, actualQuantityHeld float64, useFixedQuantity bool, createdAt time.Time) *TradingBot {
 	return &TradingBot{
 		Id:                     id,
 		symbol:                 symbol,
@@ -100,6 +107,8 @@ func Restore(id *vo.EntityId, symbol vo.Symbol, quantity float64, strategy Tradi
 		tradingFees:            tradingFees,
 		minimumProfitThreshold: minimumProfitThreshold,
 		entryPrice:             entryPrice,
+		actualQuantityHeld:     actualQuantityHeld,
+		useFixedQuantity:       useFixedQuantity,
 		createdAt:              createdAt,
 	}
 }
@@ -204,6 +213,37 @@ func (b *TradingBot) GetTradingFees() float64 {
 
 func (b *TradingBot) GetMinimumProfitThreshold() float64 {
 	return b.minimumProfitThreshold
+}
+
+func (b *TradingBot) GetActualQuantityHeld() float64 {
+	return b.actualQuantityHeld
+}
+
+func (b *TradingBot) SetActualQuantityHeld(quantity float64) {
+	b.actualQuantityHeld = quantity
+}
+
+func (b *TradingBot) ClearActualQuantityHeld() {
+	b.actualQuantityHeld = 0.0
+}
+
+func (b *TradingBot) GetUseFixedQuantity() bool {
+	return b.useFixedQuantity
+}
+
+func (b *TradingBot) SetUseFixedQuantity(useFixed bool) {
+	b.useFixedQuantity = useFixed
+}
+
+// CalculateQuantityForSell calculates the quantity available for selling after considering trading fees
+func (b *TradingBot) CalculateQuantityForSell() float64 {
+	if b.actualQuantityHeld > 0 {
+		// Use the actual quantity held (after buy fees)
+		return b.actualQuantityHeld
+	}
+	// Fallback to original quantity minus estimated fees
+	feePercentage := b.tradingFees / 100.0
+	return b.quantity * (1.0 - feePercentage)
 }
 
 func (b *TradingBot) Stop() error {

@@ -38,6 +38,37 @@ curl -X POST http://localhost:8080/api/v1/trading/backtest \
   -d @example_backtest_request.json
 ```
 
+### Trading Fee Management System
+Comprehensive handling of Binance trading fees to ensure accurate live trading:
+
+#### Fee Structure
+- **Standard Fee**: 0.1% per trade (configurable per bot)
+- **BNB Discount**: 0.075% when using BNB for fees (market standard)
+- **Fee Application**: Deducted from purchased quantity on buy orders
+
+#### Key Features
+- **Actual Quantity Tracking**: `actualQuantityHeld` field tracks real crypto amount after fees
+- **Accurate Sell Orders**: Uses actual quantity (not original order quantity) for sells
+- **Fixed vs Dynamic Quantity**: Configurable trading modes for different strategies
+- **Fee-Aware Backtesting**: Realistic simulations include trading fee calculations
+
+#### Trading Modes
+1. **Fixed Quantity Mode** (`useFixedQuantity: true`):
+   - Always trades the same crypto amount (e.g., 0.001 BTC)
+   - Suitable for DCA strategies and consistent position sizing
+   
+2. **Dynamic Quantity Mode** (`useFixedQuantity: false`):
+   - Calculates quantity based on fixed fiat amount (e.g., $100 worth of BTC)
+   - Adjusts to price changes, maintains consistent investment amount
+
+#### Database Schema
+- **`actual_quantity_held`**: DECIMAL(20,8) - Real quantity after buy fees
+- **`use_fixed_quantity`**: BOOLEAN - Trading mode selection (default: true)
+
+#### API Changes
+- **Create Bot Request**: Includes `use_fixed_quantity` parameter
+- **Bot Response**: Shows both `quantity` and `actual_quantity_held` fields
+
 ## Common Development Commands
 
 ### Build and Run
@@ -73,6 +104,14 @@ go test -v ./src/domain/vo/
 psql -d crypgo_machine -f src/infra/database/migrations/001_create_trade_bots_table.sql
 psql -d crypgo_machine -f src/infra/database/migrations/002_add_strategy_params_column.sql
 psql -d crypgo_machine -f src/infra/database/migrations/003_create_trading_decision_logs_table.sql
+psql -d crypgo_machine -f src/infra/database/migrations/004_add_interval_seconds_column.sql
+psql -d crypgo_machine -f src/infra/database/migrations/004_create_sentiment_suggestions_table.sql
+psql -d crypgo_machine -f src/infra/database/migrations/005_add_current_possible_profit_column.sql
+psql -d crypgo_machine -f src/infra/database/migrations/006_add_financial_parameters.sql
+psql -d crypgo_machine -f src/infra/database/migrations/007_add_entry_price_column.sql
+psql -d crypgo_machine -f src/infra/database/migrations/008_add_llm_analysis_columns.sql
+psql -d crypgo_machine -f src/infra/database/migrations/009_add_actual_quantity_held_column.sql
+psql -d crypgo_machine -f src/infra/database/migrations/010_add_use_fixed_quantity_column.sql
 ```
 
 ### Production Monitoring
@@ -133,10 +172,19 @@ ssh root@31.97.249.4 "cd /opt/crypgo-machine && docker-compose -f docker-compose
 - Strategy parameters stored as JSON in database and reconstructed via factory
 
 ### Value Object Validation
-- `Symbol`: Validates against whitelist (BTCBRL, SOLBRL)
+- `Symbol`: Flexible validation for any Binance trading pair (6-15 chars, uppercase letters/numbers)
 - `Kline`: Comprehensive OHLCV validation with proper ordering
 - `EntityId`: UUID-based with validation
 - `MinimumSpread`: Percentage-based for strategy configuration
+
+### Fee Management & Quantity Calculation
+- **Fee Tracking**: `actualQuantityHeld` tracks crypto amount after trading fees
+- **Sell Quantity Logic**: Uses `CalculateQuantityForSell()` method for accurate sell orders
+- **Trading Modes**: 
+  - Fixed Quantity: Always trade same crypto amount (e.g., 0.001 BTC)
+  - Dynamic Quantity: Calculate crypto amount from fiat value (e.g., $100 worth)
+- **Fee Integration**: Both live trading and backtesting account for 0.1% trading fees
+- **Database Fields**: `actual_quantity_held` and `use_fixed_quantity` for complete state management
 
 ### Repository Pattern
 - Interface definitions in `src/application/repository/`

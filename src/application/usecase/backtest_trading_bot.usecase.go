@@ -242,6 +242,7 @@ func (uc *BacktestTradingBotUseCase) createBotForBacktest(input BacktestTradingB
 		currency,
 		input.TradingFees,
 		input.MinimumProfitThreshold,
+		false,
 	)
 
 	return bot, nil

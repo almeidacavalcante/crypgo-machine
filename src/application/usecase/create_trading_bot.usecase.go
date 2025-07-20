@@ -43,6 +43,7 @@ type InputCreateTradingBot struct {
 	Currency                 string      `json:"currency"`
 	TradingFees              float64     `json:"trading_fees"`
 	MinimumProfitThreshold   float64     `json:"minimum_profit_threshold"`
+	UseFixedQuantity         bool        `json:"use_fixed_quantity"`
 }
 
 func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
@@ -81,6 +82,7 @@ func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
 		input.Currency,
 		input.TradingFees,
 		input.MinimumProfitThreshold,
+		input.UseFixedQuantity,
 	)
 
 	errSave := uc.tradingBotRepository.Save(bot)

@@ -106,22 +106,35 @@ func TestCreateTradingBotUseCase_InvalidSymbol(t *testing.T) {
 	mockMessageBroker := &MockMessageBroker{}
 	uc := NewCreateTradingBotUseCase(mockRepo, binance.Client{}, mockMessageBroker, "test-exchange")
 
-	input := InputCreateTradingBot{
-		Symbol:                   "INVALID",
-		Quantity:                 1,
-		Strategy:                 "MovingAverage",
-		Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
-		IntervalSeconds:          3600,
-		InitialCapital:           10000.0,
-		TradeAmount:              4000.0,
-		Currency:                 "BRL",
-		TradingFees:              0.001,
-		MinimumProfitThreshold:   5.0,
+	// Testando símbolos inválidos segundo a nova validação
+	invalidSymbols := []string{
+		"BTC",           // muito curto (menos de 6 caracteres)
+		"btcusdt",       // letras minúsculas
+		"BTC-USDT",      // caractere especial
+		"BTC USDT",      // espaço
+		"BTCUSDTPERPETUALFUTURES", // muito longo (mais de 15 caracteres)
 	}
 
-	err := uc.Execute(input)
-	if err == nil {
-		t.Error("expected error for invalid symbol, got nil")
+	for _, symbol := range invalidSymbols {
+		t.Run(symbol, func(t *testing.T) {
+			input := InputCreateTradingBot{
+				Symbol:                   symbol,
+				Quantity:                 1,
+				Strategy:                 "MovingAverage",
+				Params:                   service.MovingAverageParams{FastWindow: 7, SlowWindow: 21},
+				IntervalSeconds:          3600,
+				InitialCapital:           10000.0,
+				TradeAmount:              4000.0,
+				Currency:                 "BRL",
+				TradingFees:              0.001,
+				MinimumProfitThreshold:   5.0,
+			}
+
+			err := uc.Execute(input)
+			if err == nil {
+				t.Errorf("expected error for invalid symbol %s, got nil", symbol)
+			}
+		})
 	}
 }
 
