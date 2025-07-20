@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/adshao/go-binance/v2"
-	"strconv"
 	"time"
 )
 
