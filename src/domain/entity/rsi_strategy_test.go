@@ -134,6 +134,56 @@ func TestRSIStrategy_CustomThresholds(t *testing.T) {
 	}
 }
 
+func TestRSIStrategy_Stoploss_Trigger(t *testing.T) {
+	minimumSpread, _ := vo.NewMinimumSpread(0.1)
+	strategy := NewRSIStrategyWithStoploss(14, 30.0, 70.0, minimumSpread, 5.0) // 5% stoploss
+
+	// Create positioned bot with entry at 50, current price will be 47 (6% loss)
+	bot := createTestTradingBot(true, 50.0, 1.0) // positioned, entry at 50, 1% min profit
+
+	// Create klines with declining prices (should trigger stoploss)
+	klines := createTestKlinesForRSI([]float64{
+		50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 47, // Final price 47 = 6% loss
+	})
+
+	result := strategy.Decide(klines, bot)
+
+	if result.Decision != Sell {
+		t.Errorf("Expected Sell decision for stoploss trigger, got: %s", result.Decision)
+	}
+
+	if result.AnalysisData["reason"] != "stoploss_triggered" {
+		t.Errorf("Expected stoploss_triggered reason, got: %s", result.AnalysisData["reason"])
+	}
+
+	if result.AnalysisData["stoplossThreshold"] != 5.0 {
+		t.Errorf("Expected stoploss threshold 5.0, got: %v", result.AnalysisData["stoplossThreshold"])
+	}
+}
+
+func TestRSIStrategy_Stoploss_NoTrigger(t *testing.T) {
+	minimumSpread, _ := vo.NewMinimumSpread(0.1)
+	strategy := NewRSIStrategyWithStoploss(14, 30.0, 70.0, minimumSpread, 5.0) // 5% stoploss
+
+	// Create positioned bot with entry at 50, current price will be 48 (4% loss, below stoploss)
+	bot := createTestTradingBot(true, 50.0, 1.0) // positioned, entry at 50, 1% min profit
+
+	// Create klines with mild decline (should not trigger stoploss)
+	klines := createTestKlinesForRSI([]float64{
+		50, 49, 48, 47, 46, 47, 48, 49, 50, 49, 48, 47, 48, 49, 50, 48, // Final price 48 = 4% loss
+	})
+
+	result := strategy.Decide(klines, bot)
+
+	if result.Decision == Sell {
+		t.Errorf("Expected no Sell decision for insufficient stoploss, got: %s", result.Decision)
+	}
+
+	if result.AnalysisData["reason"] == "stoploss_triggered" {
+		t.Errorf("Should not trigger stoploss for 4%% loss with 5%% threshold")
+	}
+}
+
 // Helper functions
 func createTestTradingBot(isPositioned bool, entryPrice, minProfitThreshold float64) *TradingBot {
 	symbol, _ := vo.NewSymbol("BTCUSDT")

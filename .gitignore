@@ -43,6 +43,9 @@ Thumbs.db
 http-client.env.json
 *.env.json
 
+# Login requests (contains credentials)
+login_request.json
+
 # Build artifacts and executables
 *.tar.gz
 main

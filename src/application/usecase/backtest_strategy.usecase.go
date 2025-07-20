@@ -170,6 +170,72 @@ func (uc *BacktestStrategyUseCase) createStrategy(strategyName string, params ma
 		}
 		
 		return entity.NewMovingAverageStrategyWithSpread(fastWindow, slowWindow, minimumSpread), nil
+		
+	case "RSI":
+		// Default RSI parameters
+		period := 14
+		oversoldThreshold := 30.0
+		overboughtThreshold := 70.0
+		minimumSpreadValue := 0.1
+		stoplossThreshold := 0.0
+		
+		// Override with provided parameters if available
+		if params != nil {
+			if p, ok := params["Period"]; ok {
+				if pFloat, ok := p.(float64); ok {
+					period = int(pFloat)
+				}
+			}
+			if ot, ok := params["OversoldThreshold"]; ok {
+				if otFloat, ok := ot.(float64); ok {
+					oversoldThreshold = otFloat
+				}
+			}
+			if obt, ok := params["OverboughtThreshold"]; ok {
+				if obtFloat, ok := obt.(float64); ok {
+					overboughtThreshold = obtFloat
+				}
+			}
+			if ms, ok := params["MinimumSpread"]; ok {
+				if msFloat, ok := ms.(float64); ok {
+					minimumSpreadValue = msFloat
+				}
+			}
+			if st, ok := params["StoplossThreshold"]; ok {
+				if stFloat, ok := st.(float64); ok {
+					stoplossThreshold = stFloat
+				}
+			}
+		}
+		
+		// Validate RSI parameters
+		if period <= 0 {
+			return nil, fmt.Errorf("invalid RSI period: %d (must be positive)", period)
+		}
+		if oversoldThreshold <= 0 || oversoldThreshold >= 100 {
+			return nil, fmt.Errorf("invalid OversoldThreshold: %f (must be between 0 and 100)", oversoldThreshold)
+		}
+		if overboughtThreshold <= 0 || overboughtThreshold >= 100 {
+			return nil, fmt.Errorf("invalid OverboughtThreshold: %f (must be between 0 and 100)", overboughtThreshold)
+		}
+		if oversoldThreshold >= overboughtThreshold {
+			return nil, fmt.Errorf("OversoldThreshold (%f) must be less than OverboughtThreshold (%f)", oversoldThreshold, overboughtThreshold)
+		}
+		
+		// Create RSI strategy
+		minimumSpread, err := vo.NewMinimumSpread(minimumSpreadValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create MinimumSpread: %w", err)
+		}
+		
+		if stoplossThreshold > 0 {
+			return entity.NewRSIStrategyWithStoploss(period, oversoldThreshold, overboughtThreshold, minimumSpread, stoplossThreshold), nil
+		} else if oversoldThreshold != 30.0 || overboughtThreshold != 70.0 || minimumSpreadValue != 0.1 {
+			return entity.NewRSIStrategyWithCustomThresholds(period, oversoldThreshold, overboughtThreshold, minimumSpread), nil
+		} else {
+			return entity.NewRSIStrategy(period), nil
+		}
+		
 	default:
 		return nil, fmt.Errorf("unsupported strategy: %s", strategyName)
 	}
@@ -353,14 +419,20 @@ func (uc *BacktestStrategyUseCase) executeDecision(
 			rawProfit := ((price - entryPrice) / entryPrice) * 100
 
 			// CRITICAL PROTECTION: Double-check profit before allowing sale
-			if rawProfit < 0 {
+			// Allow sale at loss only if it's a stoploss trigger
+			reason := ""
+			if r, ok := analysisData["reason"].(string); ok {
+				reason = r
+			}
+			
+			if rawProfit < 0 && reason != "stoploss_triggered" {
 				fmt.Printf("🚨 BLOCKED SALE AT LOSS | Price: R$%.2f | Entry: R$%.2f | Loss: %.2f%% | REASON: %s | at %s\n",
-					price, entryPrice, rawProfit, analysisData["reason"], timestamp.Format("2006-01-02 15:04"))
+					price, entryPrice, rawProfit, reason, timestamp.Format("2006-01-02 15:04"))
 				return nil // Block the sale
 			}
 			
-			// NEW PROTECTION: Check minimum profit threshold
-			if rawProfit < simulator.minimumProfitThreshold {
+			// NEW PROTECTION: Check minimum profit threshold (but allow stoploss to override)
+			if rawProfit < simulator.minimumProfitThreshold && reason != "stoploss_triggered" {
 				fmt.Printf("🎯 WAITING FOR TARGET | Price: R$%.2f | Entry: R$%.2f | Profit: %.2f%% | Target: %.2f%% | at %s\n",
 					price, entryPrice, rawProfit, simulator.minimumProfitThreshold, timestamp.Format("2006-01-02 15:04"))
 				return nil // Block the sale until target is reached
@@ -377,8 +449,12 @@ func (uc *BacktestStrategyUseCase) executeDecision(
 			finalProfit := simulator.currentTrade.GetProfitLoss()
 
 			// Enhanced log with profit info
-			fmt.Printf("🔴 SELL %s | Price: R$%.2f | Entry: R$%.2f | Raw Profit: %.2f%% | Final P&L: %s | at %s\n",
-				symbol.GetValue(), price, entryPrice, rawProfit, finalProfit.String(), timestamp.Format("2006-01-02 15:04"))
+			sellType := "SELL"
+			if reason == "stoploss_triggered" {
+				sellType = "STOPLOSS"
+			}
+			fmt.Printf("🔴 %s %s | Price: R$%.2f | Entry: R$%.2f | Raw Profit: %.2f%% | Final P&L: %s | at %s\n",
+				sellType, symbol.GetValue(), price, entryPrice, rawProfit, finalProfit.String(), timestamp.Format("2006-01-02 15:04"))
 
 			err = simulator.result.AddTrade(simulator.currentTrade)
 			if err != nil {

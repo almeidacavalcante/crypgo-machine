@@ -12,6 +12,7 @@ type RSIStrategy struct {
 	OversoldThreshold   float64
 	OverboughtThreshold float64
 	MinimumSpread       vo.MinimumSpread
+	StoplossThreshold   float64
 }
 
 func NewRSIStrategy(period int) *RSIStrategy {
@@ -22,6 +23,7 @@ func NewRSIStrategy(period int) *RSIStrategy {
 		OversoldThreshold:   30.0,
 		OverboughtThreshold: 70.0,
 		MinimumSpread:       minimumSpread,
+		StoplossThreshold:   0.0,
 	}
 }
 
@@ -31,6 +33,17 @@ func NewRSIStrategyWithCustomThresholds(period int, oversold, overbought float64
 		OversoldThreshold:   oversold,
 		OverboughtThreshold: overbought,
 		MinimumSpread:       minimumSpread,
+		StoplossThreshold:   0.0,
+	}
+}
+
+func NewRSIStrategyWithStoploss(period int, oversold, overbought float64, minimumSpread vo.MinimumSpread, stoplossThreshold float64) *RSIStrategy {
+	return &RSIStrategy{
+		Period:              period,
+		OversoldThreshold:   oversold,
+		OverboughtThreshold: overbought,
+		MinimumSpread:       minimumSpread,
+		StoplossThreshold:   stoplossThreshold,
 	}
 }
 
@@ -44,6 +57,7 @@ func (s *RSIStrategy) GetParams() map[string]interface{} {
 		"OversoldThreshold":   s.OversoldThreshold,
 		"OverboughtThreshold": s.OverboughtThreshold,
 		"MinimumSpread":       s.MinimumSpread.GetValue(),
+		"StoplossThreshold":   s.StoplossThreshold,
 	}
 }
 
@@ -81,9 +95,17 @@ func (s *RSIStrategy) Decide(klines []vo.Kline, tradingBot *TradingBot) *Strateg
 		"entryPrice":              entryPrice,
 		"possibleProfit":          possibleProfit,
 		"minimumProfitThreshold":  tradingBot.GetMinimumProfitThreshold(),
+		"stoplossThreshold":       s.StoplossThreshold,
 	}
 
 	var decision TradingDecision
+
+	// Check for stoploss first if positioned and stoploss is enabled
+	if tradingBot.GetIsPositioned() && s.StoplossThreshold > 0 && possibleProfit <= -s.StoplossThreshold {
+		decision = Sell
+		analysisData["reason"] = "stoploss_triggered"
+		return NewStrategyAnalysisResult(decision, analysisData)
+	}
 
 	// RSI Logic: Buy when oversold (RSI < 30) and not positioned
 	// Sell when overbought (RSI > 70) and positioned with sufficient profit

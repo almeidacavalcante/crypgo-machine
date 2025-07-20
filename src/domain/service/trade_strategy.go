@@ -15,6 +15,7 @@ type RSIParams struct {
 	Period              int
 	OversoldThreshold   float64
 	OverboughtThreshold float64
+	StoplossThreshold   float64
 }
 
 func NewTradeStrategyFactory(strategyType string, Params interface{}) (entity.TradingStrategy, error) {
@@ -59,9 +60,12 @@ func NewTradeStrategyFactory(strategyType string, Params interface{}) (entity.Tr
 			overbought = 70.0
 		}
 		
-		// Create with custom thresholds if they differ from defaults
-		if oversold != 30.0 || overbought != 70.0 {
-			minimumSpread, _ := vo.NewMinimumSpread(0.1)
+		minimumSpread, _ := vo.NewMinimumSpread(0.1)
+		
+		// Create with stoploss if provided, otherwise use custom thresholds or defaults
+		if params.StoplossThreshold > 0 {
+			strategy = entity.NewRSIStrategyWithStoploss(params.Period, oversold, overbought, minimumSpread, params.StoplossThreshold)
+		} else if oversold != 30.0 || overbought != 70.0 {
 			strategy = entity.NewRSIStrategyWithCustomThresholds(params.Period, oversold, overbought, minimumSpread)
 		} else {
 			strategy = entity.NewRSIStrategy(params.Period)
