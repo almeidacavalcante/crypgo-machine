@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypgo-machine/src/application/repository"
 	"crypgo-machine/src/domain/entity"
+	"crypgo-machine/src/domain/service"
 	"crypgo-machine/src/infra/external"
 	"crypgo-machine/src/infra/queue"
 	"encoding/json"
@@ -19,6 +20,7 @@ type LiveTradingExecutionContext struct {
 	tradingBotRepository         repository.TradingBotRepository
 	tradingDecisionLogRepository repository.TradingDecisionLogRepository
 	messageBroker                queue.MessageBroker
+	orderValidator              *service.OrderValidatorService
 	exchangeName                 string
 	shouldContinue               bool
 }
@@ -31,11 +33,16 @@ func NewLiveTradingExecutionContext(
 	messageBroker queue.MessageBroker,
 	exchangeName string,
 ) *LiveTradingExecutionContext {
+	// Create exchange info service and order validator
+	exchangeInfoService := external.NewExchangeInfoService(client)
+	orderValidator := service.NewOrderValidatorService(exchangeInfoService)
+	
 	return &LiveTradingExecutionContext{
 		client:                       client,
 		tradingBotRepository:         tradingBotRepo,
 		tradingDecisionLogRepository: decisionLogRepo,
 		messageBroker:                messageBroker,
+		orderValidator:              orderValidator,
 		exchangeName:                 exchangeName,
 		shouldContinue:               true,
 	}
@@ -62,7 +69,7 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 		}
 		fmt.Printf("🟢 [%s] BUY order (qty: %.6f, price: %.2f)\n", symbol, quantity, currentPrice)
 
-		isOrderPlaced := ctx.placeBuyOrder(symbol, quantity)
+		isOrderPlaced := ctx.placeBuyOrder(symbol, quantity, currentPrice)
 		if isOrderPlaced {
 			// Set entry price when entering position
 			bot.SetEntryPrice(currentPrice)
@@ -100,7 +107,7 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 		fmt.Printf("🔴 [%s] SELL order (qty: %.6f, profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
 			symbol, sellQuantity, actualProfit, bot.GetEntryPrice(), currentPrice)
 
-		isOrderPlaced := ctx.placeSellOrder(symbol, sellQuantity)
+		isOrderPlaced := ctx.placeSellOrder(symbol, sellQuantity, currentPrice)
 		if isOrderPlaced {
 			// Clear entry price and actual quantity when exiting position
 			entryPrice := bot.GetEntryPrice()
@@ -161,15 +168,26 @@ func (ctx *LiveTradingExecutionContext) Stop() {
 	ctx.shouldContinue = false
 }
 
-// placeBuyOrder places a real buy order via Binance API
-func (ctx *LiveTradingExecutionContext) placeBuyOrder(symbol string, quantity float64) bool {
-	qtyStr := strconv.FormatFloat(quantity, 'f', 6, 64)
+// placeBuyOrder places a real buy order via Binance API with validation
+func (ctx *LiveTradingExecutionContext) placeBuyOrder(symbol string, quantity, price float64) bool {
+	// Validate and adjust quantity
+	adjustedQty, formattedQty, shouldProceed, warnings := ctx.orderValidator.ValidateOrderBeforePlacement(symbol, quantity, price)
+	
+	if !shouldProceed {
+		fmt.Printf("❌ Buy order validation failed for %s\n", symbol)
+		return false
+	}
+
+	// Log warnings if any
+	for _, warning := range warnings {
+		fmt.Printf("⚠️ [%s] %s\n", symbol, warning)
+	}
 
 	order, err := ctx.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(binance.SideTypeBuy).
 		Type(binance.OrderTypeMarket).
-		Quantity(qtyStr).
+		Quantity(formattedQty).
 		Do(context.Background())
 
 	if err != nil {
@@ -177,19 +195,30 @@ func (ctx *LiveTradingExecutionContext) placeBuyOrder(symbol string, quantity fl
 		return false
 	}
 
-	fmt.Printf("✅ Buy order placed: %+v\n", order)
+	fmt.Printf("✅ Buy order placed: OrderID=%d, Qty=%s (adj: %.8f)\n", order.OrderID, formattedQty, adjustedQty)
 	return true
 }
 
-// placeSellOrder places a real sell order via Binance API
-func (ctx *LiveTradingExecutionContext) placeSellOrder(symbol string, quantity float64) bool {
-	qtyStr := strconv.FormatFloat(quantity, 'f', 6, 64)
+// placeSellOrder places a real sell order via Binance API with validation
+func (ctx *LiveTradingExecutionContext) placeSellOrder(symbol string, quantity, price float64) bool {
+	// Validate and adjust quantity
+	adjustedQty, formattedQty, shouldProceed, warnings := ctx.orderValidator.ValidateOrderBeforePlacement(symbol, quantity, price)
+	
+	if !shouldProceed {
+		fmt.Printf("❌ Sell order validation failed for %s\n", symbol)
+		return false
+	}
+
+	// Log warnings if any
+	for _, warning := range warnings {
+		fmt.Printf("⚠️ [%s] %s\n", symbol, warning)
+	}
 
 	order, err := ctx.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(binance.SideTypeSell).
 		Type(binance.OrderTypeMarket).
-		Quantity(qtyStr).
+		Quantity(formattedQty).
 		Do(context.Background())
 
 	if err != nil {
@@ -197,7 +226,7 @@ func (ctx *LiveTradingExecutionContext) placeSellOrder(symbol string, quantity f
 		return false
 	}
 
-	fmt.Printf("✅ Sell order placed: %+v\n", order)
+	fmt.Printf("✅ Sell order placed: OrderID=%d, Qty=%s (adj: %.8f)\n", order.OrderID, formattedQty, adjustedQty)
 	return true
 }
 
