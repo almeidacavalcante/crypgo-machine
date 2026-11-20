@@ -32,10 +32,10 @@ func NewOrderValidatorService(exchangeInfoService *external.ExchangeInfoService)
 // ValidateOrder validates an order and provides corrections if needed
 func (s *OrderValidatorService) ValidateOrder(symbol string, quantity, price float64) (*OrderValidationResult, error) {
 	result := &OrderValidationResult{
-		OriginalQuantity:  quantity,
-		AdjustedQuantity:  quantity,
-		ValidationErrors:  make([]string, 0),
-		Warnings:          make([]string, 0),
+		OriginalQuantity: quantity,
+		AdjustedQuantity: quantity,
+		ValidationErrors: make([]string, 0),
+		Warnings:         make([]string, 0),
 	}
 
 	// Get symbol filters from exchange info
@@ -67,13 +67,13 @@ func (s *OrderValidatorService) ValidateOrder(symbol string, quantity, price flo
 	if quantityErr != nil {
 		adjustedQuantity := domainFilter.AdjustQuantityToStepSize(quantity)
 		result.AdjustedQuantity = adjustedQuantity
-		
+
 		// Re-validate the adjusted quantity
 		adjustedQuantityErr := domainFilter.ValidateQuantity(adjustedQuantity)
 		adjustedNotionalErr := domainFilter.ValidateNotional(adjustedQuantity, price)
-		
+
 		if adjustedQuantityErr == nil && adjustedNotionalErr == nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("Quantity adjusted from %.8f to %.8f to comply with step size %.8f", 
+			result.Warnings = append(result.Warnings, fmt.Sprintf("Quantity adjusted from %.8f to %.8f to comply with step size %.8f",
 				quantity, adjustedQuantity, domainFilter.GetStepSize()))
 			result.IsValid = true
 		} else {
@@ -117,7 +117,7 @@ func (s *OrderValidatorService) ValidateAndAdjustQuantity(symbol string, quantit
 
 	if !result.IsValid {
 		errorMsg := fmt.Sprintf("Order validation failed for %s: %v", symbol, result.ValidationErrors)
-		return quantity, fmt.Sprintf("%.6f", quantity), fmt.Errorf(errorMsg)
+		return quantity, fmt.Sprintf("%.6f", quantity), fmt.Errorf("%s", errorMsg)
 	}
 
 	return result.AdjustedQuantity, result.FormattedQuantity, nil
@@ -166,7 +166,7 @@ func (s *OrderValidatorService) GetSymbolInfo(symbol string) (map[string]interfa
 	}
 
 	info := map[string]interface{}{
-		"symbol": filters.Symbol,
+		"symbol":       filters.Symbol,
 		"last_updated": filters.LastUpdated,
 	}
 
@@ -193,7 +193,19 @@ func (s *OrderValidatorService) GetSymbolInfo(symbol string) (map[string]interfa
 	return info, nil
 }
 
-// ValidateOrderBeforePlacement is a convenience method that validates and logs
+// ValidateOrderBeforePlacement is a convenience method that validates and logs.
+//
+// Return values:
+//   - adjustedQty: the step-size-compliant quantity to order; never more than
+//     quantity. When shouldProceed is false it is the unadjusted quantity.
+//   - formattedQty: the string to send to the exchange, formatted with the
+//     step size precision. When shouldProceed is false it is the unadjusted
+//     quantity formatted with %.6f, for logging only, and must not be sent.
+//   - shouldProceed: true only when the (adjusted) order passes every filter.
+//   - warnings: messages for the caller to log. When shouldProceed is true they
+//     are the adjustment warnings (empty if nothing was adjusted). When
+//     shouldProceed is false they are the reasons the order was refused and
+//     are never empty.
 func (s *OrderValidatorService) ValidateOrderBeforePlacement(symbol string, quantity, price float64) (adjustedQty float64, formattedQty string, shouldProceed bool, warnings []string) {
 	result, err := s.ValidateOrder(symbol, quantity, price)
 	if err != nil {
@@ -218,7 +230,7 @@ func (s *OrderValidatorService) ValidateOrderBeforePlacement(symbol string, quan
 	}
 
 	if result.AdjustedQuantity != result.OriginalQuantity {
-		fmt.Printf("📐 Quantity adjusted for %s: %.8f → %.8f (formatted: %s)\n", 
+		fmt.Printf("📐 Quantity adjusted for %s: %.8f → %.8f (formatted: %s)\n",
 			symbol, result.OriginalQuantity, result.AdjustedQuantity, result.FormattedQuantity)
 	}
 

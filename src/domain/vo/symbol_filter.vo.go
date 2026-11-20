@@ -7,14 +7,14 @@ import (
 
 // SymbolFilter contains trading rules for symbol validation
 type SymbolFilter struct {
-	symbol        string
-	minQuantity   float64
-	maxQuantity   float64
-	stepSize      float64
-	minPrice      float64
-	maxPrice      float64
-	tickSize      float64
-	minNotional   float64
+	symbol      string
+	minQuantity float64
+	maxQuantity float64
+	stepSize    float64
+	minPrice    float64
+	maxPrice    float64
+	tickSize    float64
+	minNotional float64
 }
 
 // NewSymbolFilter creates a new SymbolFilter
@@ -24,36 +24,36 @@ func NewSymbolFilter(
 	minPrice, maxPrice, tickSize float64,
 	minNotional float64,
 ) (*SymbolFilter, error) {
-	
+
 	if symbol == "" {
 		return nil, fmt.Errorf("symbol cannot be empty")
 	}
-	
+
 	if minQuantity < 0 || maxQuantity < 0 || stepSize <= 0 {
 		return nil, fmt.Errorf("invalid quantity constraints for %s", symbol)
 	}
-	
+
 	if minQuantity > maxQuantity {
 		return nil, fmt.Errorf("minQuantity cannot be greater than maxQuantity for %s", symbol)
 	}
-	
+
 	if minPrice < 0 || maxPrice < 0 || tickSize <= 0 {
 		return nil, fmt.Errorf("invalid price constraints for %s", symbol)
 	}
-	
+
 	if minNotional < 0 {
 		return nil, fmt.Errorf("invalid notional constraint for %s", symbol)
 	}
 
 	return &SymbolFilter{
-		symbol:        symbol,
-		minQuantity:   minQuantity,
-		maxQuantity:   maxQuantity,
-		stepSize:      stepSize,
-		minPrice:      minPrice,
-		maxPrice:      maxPrice,
-		tickSize:      tickSize,
-		minNotional:   minNotional,
+		symbol:      symbol,
+		minQuantity: minQuantity,
+		maxQuantity: maxQuantity,
+		stepSize:    stepSize,
+		minPrice:    minPrice,
+		maxPrice:    maxPrice,
+		tickSize:    tickSize,
+		minNotional: minNotional,
 	}, nil
 }
 
@@ -102,7 +102,7 @@ func (sf *SymbolFilter) ValidateQuantity(quantity float64) error {
 	if quantity < sf.minQuantity {
 		return fmt.Errorf("quantity %.8f is below minimum %.8f for %s", quantity, sf.minQuantity, sf.symbol)
 	}
-	
+
 	if quantity > sf.maxQuantity {
 		return fmt.Errorf("quantity %.8f exceeds maximum %.8f for %s", quantity, sf.maxQuantity, sf.symbol)
 	}
@@ -121,36 +121,58 @@ func (sf *SymbolFilter) ValidateQuantity(quantity float64) error {
 	return nil
 }
 
-// AdjustQuantityToStepSize adjusts quantity to comply with step size
+// AdjustQuantityToStepSize adjusts quantity to comply with step size.
+//
+// The result is always rounded DOWN to a whole number of steps and then
+// rounded to the step size's decimal precision, so floating point noise from
+// Floor(q/step)*step (e.g. 10.099999999999998 instead of 10.1) is removed.
+// The result never exceeds the requested quantity: an order must never ask for
+// more than the caller requested (or holds). If the floored quantity is below
+// the symbol's minimum, it is returned as is and ValidateQuantity rejects it;
+// it is never bumped up to the minimum.
 func (sf *SymbolFilter) AdjustQuantityToStepSize(quantity float64) float64 {
 	if sf.stepSize <= 0 {
 		return quantity
 	}
 
-	// Round down to the nearest step
-	steps := math.Floor(quantity / sf.stepSize)
-	adjustedQuantity := steps * sf.stepSize
-
-	// Ensure we don't go below minimum
-	if adjustedQuantity < sf.minQuantity {
-		// Try rounding up instead
-		steps = math.Ceil(quantity / sf.stepSize)
-		adjustedQuantity = steps * sf.stepSize
-		
-		// If still below minimum or above maximum, return the minimum
-		if adjustedQuantity < sf.minQuantity || adjustedQuantity > sf.maxQuantity {
-			adjustedQuantity = sf.minQuantity
-		}
-	}
-
-	// Ensure we don't exceed maximum
-	if adjustedQuantity > sf.maxQuantity {
+	limit := quantity
+	if limit > sf.maxQuantity {
 		// Round down to fit within maximum
-		steps = math.Floor(sf.maxQuantity / sf.stepSize)
-		adjustedQuantity = steps * sf.stepSize
+		limit = sf.maxQuantity
 	}
 
-	return adjustedQuantity
+	return sf.floorToStep(limit)
+}
+
+// floorToStep rounds value down to a whole number of steps, rounded to the
+// step size's decimal precision, and guarantees the result is <= value.
+func (sf *SymbolFilter) floorToStep(value float64) float64 {
+	if value <= 0 {
+		return 0
+	}
+
+	// The small tolerance keeps exact multiples (e.g. 0.3/0.1 = 2.9999999999999996)
+	// from losing a whole step to floating point error.
+	steps := math.Floor(value/sf.stepSize + 1e-9)
+	adjusted := sf.roundToStepPrecision(steps * sf.stepSize)
+
+	// Never return more than the requested value.
+	for adjusted > value && steps > 0 {
+		steps--
+		adjusted = sf.roundToStepPrecision(steps * sf.stepSize)
+	}
+
+	return adjusted
+}
+
+// roundToStepPrecision rounds value to the number of decimal places of the step size.
+func (sf *SymbolFilter) roundToStepPrecision(value float64) float64 {
+	decimalPlaces := sf.calculateDecimalPlaces(sf.stepSize)
+	if decimalPlaces > 8 {
+		decimalPlaces = 8
+	}
+	multiplier := math.Pow(10, float64(decimalPlaces))
+	return math.Round(value*multiplier) / multiplier
 }
 
 // FormatQuantityString formats quantity with appropriate precision based on step size
@@ -161,7 +183,7 @@ func (sf *SymbolFilter) FormatQuantityString(quantity float64) string {
 
 	// Determine decimal places based on step size
 	decimalPlaces := sf.calculateDecimalPlaces(sf.stepSize)
-	
+
 	// Limit to reasonable precision
 	if decimalPlaces > 8 {
 		decimalPlaces = 8
@@ -176,10 +198,10 @@ func (sf *SymbolFilter) calculateDecimalPlaces(stepSize float64) int {
 	if stepSize >= 1.0 {
 		return 0
 	}
-	
+
 	// Convert to string and count decimal places
 	stepStr := fmt.Sprintf("%.8f", stepSize)
-	
+
 	// Find the decimal point
 	decimalIndex := -1
 	for i, char := range stepStr {
@@ -188,11 +210,11 @@ func (sf *SymbolFilter) calculateDecimalPlaces(stepSize float64) int {
 			break
 		}
 	}
-	
+
 	if decimalIndex == -1 {
 		return 0
 	}
-	
+
 	// Count significant decimal places (ignore trailing zeros)
 	decimalPlaces := 0
 	for i := len(stepStr) - 1; i > decimalIndex; i-- {
@@ -201,7 +223,7 @@ func (sf *SymbolFilter) calculateDecimalPlaces(stepSize float64) int {
 			break
 		}
 	}
-	
+
 	return decimalPlaces
 }
 
@@ -210,7 +232,7 @@ func (sf *SymbolFilter) ValidatePrice(price float64) error {
 	if price < sf.minPrice {
 		return fmt.Errorf("price %.8f is below minimum %.8f for %s", price, sf.minPrice, sf.symbol)
 	}
-	
+
 	if price > sf.maxPrice {
 		return fmt.Errorf("price %.8f exceeds maximum %.8f for %s", price, sf.maxPrice, sf.symbol)
 	}
@@ -246,15 +268,15 @@ func (sf *SymbolFilter) ValidateOrder(quantity, price float64) error {
 	if err := sf.ValidateQuantity(quantity); err != nil {
 		return err
 	}
-	
+
 	if err := sf.ValidatePrice(price); err != nil {
 		return err
 	}
-	
+
 	if err := sf.ValidateNotional(quantity, price); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
