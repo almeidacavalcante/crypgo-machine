@@ -45,10 +45,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -56,7 +56,7 @@ jobs:
       # of the scheduled runs.
       - name: Restore alert state
         if: github.event_name == 'schedule'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.STATE_FILE }}
           key: basis-monitor-state-${{ github.run_id }}
@@ -82,7 +82,7 @@ jobs:
       # written only then. Restoring it on every run keeps it from expiring.
       - name: Save alert state
         if: github.event_name == 'schedule' && steps.monitor.outputs.outcome == 'alert_sent'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ env.STATE_FILE }}
           key: basis-monitor-state-${{ github.run_id }}

@@ -17,6 +17,11 @@ const (
 	defaultTelegramBaseURL = "https://api.telegram.org"
 	telegramTimeout        = 20 * time.Second
 	telegramMaxBodyBytes   = 1 << 20
+
+	// Transient failures (network errors, HTTP 429 and 5xx) are retried, with
+	// a pause of retryDelay times the attempt number between tries.
+	telegramMaxAttempts = 3
+	telegramRetryDelay  = 2 * time.Second
 )
 
 // TelegramSender sends HTML messages to one chat through the Telegram Bot
@@ -29,6 +34,8 @@ type TelegramSender struct {
 	baseURL    string
 	botToken   string
 	chatID     string
+	retryDelay time.Duration
+	sleep      func(time.Duration)
 }
 
 func NewTelegramSender(botToken, chatID string) (*TelegramSender, error) {
@@ -49,6 +56,8 @@ func NewTelegramSenderWithBaseURL(baseURL string, httpClient *http.Client, botTo
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		botToken:   strings.TrimSpace(botToken),
 		chatID:     strings.TrimSpace(chatID),
+		retryDelay: telegramRetryDelay,
+		sleep:      time.Sleep,
 	}, nil
 }
 
@@ -58,8 +67,30 @@ type telegramResponse struct {
 	Description string `json:"description"`
 }
 
-// Send delivers the message using Telegram HTML formatting.
+// Send delivers the message using Telegram HTML formatting, retrying
+// transient failures. A timed-out request may still have been delivered, so a
+// retry can occasionally produce a duplicate message.
 func (s *TelegramSender) Send(message string) error {
+	var err error
+	for attempt := 1; attempt <= telegramMaxAttempts; attempt++ {
+		var retryable bool
+		retryable, err = s.sendOnce(message)
+		if err == nil {
+			return nil
+		}
+		if !retryable {
+			return err
+		}
+		if attempt < telegramMaxAttempts {
+			s.sleep(s.retryDelay * time.Duration(attempt))
+		}
+	}
+	return fmt.Errorf("gave up after %d attempts: %w", telegramMaxAttempts, err)
+}
+
+// sendOnce makes one delivery attempt and reports whether a failure is worth
+// retrying.
+func (s *TelegramSender) sendOnce(message string) (retryable bool, err error) {
 	endpoint := fmt.Sprintf("%s/bot%s/sendMessage", s.baseURL, s.botToken)
 	form := url.Values{
 		"chat_id":                  {s.chatID},
@@ -70,23 +101,25 @@ func (s *TelegramSender) Send(message string) error {
 
 	resp, err := s.httpClient.PostForm(endpoint, form)
 	if err != nil {
-		return fmt.Errorf("telegram request failed: %w", withoutURL(err))
+		return true, fmt.Errorf("telegram request failed: %w", withoutURL(err))
 	}
 	defer resp.Body.Close()
 
+	transient := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError
+
 	body, err := io.ReadAll(io.LimitReader(resp.Body, telegramMaxBodyBytes))
 	if err != nil {
-		return fmt.Errorf("failed to read telegram response: %w", err)
+		return true, fmt.Errorf("failed to read telegram response: %w", err)
 	}
 
 	var parsed telegramResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return fmt.Errorf("telegram returned HTTP %d with an unreadable body", resp.StatusCode)
+		return transient, fmt.Errorf("telegram returned HTTP %d with an unreadable body", resp.StatusCode)
 	}
 	if !parsed.OK {
-		return fmt.Errorf("telegram rejected the message: %d %s", parsed.ErrorCode, parsed.Description)
+		return transient, fmt.Errorf("telegram rejected the message: %d %s", parsed.ErrorCode, parsed.Description)
 	}
-	return nil
+	return false, nil
 }
 
 // withoutURL strips the request URL (which contains the bot token) from

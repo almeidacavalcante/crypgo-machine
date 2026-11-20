@@ -61,6 +61,7 @@ type Outcome string
 
 const (
 	OutcomeAlertSent      Outcome = "alert_sent"
+	OutcomeAlertFailed    Outcome = "alert_failed"
 	OutcomeBelowThreshold Outcome = "below_threshold"
 	OutcomeCooldown       Outcome = "cooldown"
 )
@@ -186,6 +187,7 @@ func (uc *MonitorFuturesBasisUseCase) Execute(now time.Time) (Result, error) {
 
 	message := formatAlert(uc.config, snapshot.IndexPrice, result.Qualifying, now)
 	if err := uc.notifier.Send(message); err != nil {
+		result.Outcome = OutcomeAlertFailed
 		return result, fmt.Errorf("failed to send the basis alert: %w", err)
 	}
 	result.Outcome = OutcomeAlertSent
