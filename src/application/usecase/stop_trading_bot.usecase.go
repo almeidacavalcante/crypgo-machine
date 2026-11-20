@@ -4,16 +4,29 @@ import (
 	"crypgo-machine/src/application/repository"
 	"crypgo-machine/src/domain/entity"
 	"crypgo-machine/src/domain/vo"
+	"crypgo-machine/src/infra/queue"
 	"fmt"
 )
 
 type StopTradingBotUseCase struct {
 	tradingBotRepository repository.TradingBotRepository
+	messageBroker        queue.MessageBroker
+	exchangeName         string
 }
 
 func NewStopTradingBotUseCase(tradingBotRepository repository.TradingBotRepository) *StopTradingBotUseCase {
 	return &StopTradingBotUseCase{
 		tradingBotRepository: tradingBotRepository,
+	}
+}
+
+// NewStopTradingBotUseCaseWithMessaging creates a StopTradingBotUseCase that publishes
+// a "trading_bot.stopped" event after the bot is stopped.
+func NewStopTradingBotUseCaseWithMessaging(tradingBotRepository repository.TradingBotRepository, messageBroker queue.MessageBroker, exchangeName string) *StopTradingBotUseCase {
+	return &StopTradingBotUseCase{
+		tradingBotRepository: tradingBotRepository,
+		messageBroker:        messageBroker,
+		exchangeName:         exchangeName,
 	}
 }
 
@@ -51,6 +64,9 @@ func (uc *StopTradingBotUseCase) Execute(input InputStopTradingBot) error {
 	if err != nil {
 		return fmt.Errorf("failed to stop trading bot: %v", err)
 	}
+
+	// A failed publish is logged inside and never fails the stop.
+	publishTradingBotLifecycleEvent(uc.messageBroker, uc.exchangeName, "trading_bot.stopped", bot, "")
 
 	return nil
 }

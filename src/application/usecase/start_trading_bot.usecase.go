@@ -8,6 +8,7 @@ import (
 	"crypgo-machine/src/domain/vo"
 	"crypgo-machine/src/infra/external"
 	"crypgo-machine/src/infra/queue"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -19,6 +20,8 @@ type StartTradingBotUseCase struct {
 	client                       external.BinanceClientInterface
 	dataSource                   service.MarketDataSource
 	executionContext             service.TradingExecutionContext
+	messageBroker                queue.MessageBroker
+	exchangeName                 string
 }
 
 func NewStartTradingBotUseCase(
@@ -29,7 +32,7 @@ func NewStartTradingBotUseCase(
 	// Create default live implementations for backward compatibility
 	dataSource := service.NewLiveMarketDataSource(client)
 	executionContext := service.NewLiveTradingExecutionContext(client, tradingBotRepo, decisionLogRepo, nil, "")
-	
+
 	return &StartTradingBotUseCase{
 		tradingBotRepository:         tradingBotRepo,
 		tradingDecisionLogRepository: decisionLogRepo,
@@ -50,13 +53,15 @@ func NewStartTradingBotUseCaseWithMessaging(
 	// Create live implementations with messaging support
 	dataSource := service.NewLiveMarketDataSource(client)
 	executionContext := service.NewLiveTradingExecutionContext(client, tradingBotRepo, decisionLogRepo, messageBroker, exchangeName)
-	
+
 	return &StartTradingBotUseCase{
 		tradingBotRepository:         tradingBotRepo,
 		tradingDecisionLogRepository: decisionLogRepo,
 		client:                       client,
 		dataSource:                   dataSource,
 		executionContext:             executionContext,
+		messageBroker:                messageBroker,
+		exchangeName:                 exchangeName,
 	}
 }
 
@@ -79,6 +84,9 @@ func NewStartTradingBotUseCaseWithServices(
 
 type InputStartTradingBot struct {
 	TradingBotId string `json:"bot_id"`
+	// SkipNotification suppresses the "trading_bot.started" event (e.g. for auto-recovery on boot).
+	// It is never read from the request body.
+	SkipNotification bool `json:"-"`
 }
 
 func (uc *StartTradingBotUseCase) Execute(input InputStartTradingBot) error {
@@ -88,6 +96,12 @@ func (uc *StartTradingBotUseCase) Execute(input InputStartTradingBot) error {
 	}
 	if tradingBot == nil {
 		return fmt.Errorf("trading bot not found")
+	}
+
+	// Reject bots whose interval the exchange does not support before marking them RUNNING:
+	// an invalid interval would make the loop fail on every tick or panic in time.NewTicker.
+	if _, errInterval := external.SecondsToInterval(tradingBot.GetIntervalSeconds()); errInterval != nil {
+		return fmt.Errorf("cannot start trading bot %s: invalid interval_seconds: %w", tradingBot.Id.GetValue(), errInterval)
 	}
 
 	errStart := tradingBot.Start()
@@ -100,18 +114,112 @@ func (uc *StartTradingBotUseCase) Execute(input InputStartTradingBot) error {
 		return errSave
 	}
 
+	if !input.SkipNotification {
+		uc.publishBotEvent("trading_bot.started", tradingBot, "")
+	}
+
 	go uc.runStrategyLoop(tradingBot)
-	
-	fmt.Printf("✅ [%s] Bot started - %s strategy (%.6f qty, %ds intervals)\n", 
-		tradingBot.GetSymbol().GetValue(), 
-		tradingBot.GetStrategy().GetName(), 
-		tradingBot.GetQuantity(), 
+
+	fmt.Printf("✅ [%s] Bot started - %s strategy (%.6f qty, %ds intervals)\n",
+		tradingBot.GetSymbol().GetValue(),
+		tradingBot.GetStrategy().GetName(),
+		tradingBot.GetQuantity(),
 		tradingBot.GetIntervalSeconds())
 
 	return nil
 }
 
+// publishBotEvent publishes a bot lifecycle event. Failures are logged and never returned,
+// so a broker outage cannot fail a start or stop.
+func (uc *StartTradingBotUseCase) publishBotEvent(routingKey string, tradingBot *entity.TradingBot, reason string) {
+	publishTradingBotLifecycleEvent(uc.messageBroker, uc.exchangeName, routingKey, tradingBot, reason)
+}
+
+// publishTradingBotLifecycleEvent publishes "trading_bot.started" / "trading_bot.stopped" events
+// with the fields the email and Telegram consumers read ("id", "symbol").
+func publishTradingBotLifecycleEvent(messageBroker queue.MessageBroker, exchangeName string, routingKey string, tradingBot *entity.TradingBot, reason string) {
+	if messageBroker == nil || tradingBot == nil {
+		return
+	}
+
+	data := map[string]interface{}{
+		"id":       tradingBot.Id.GetValue(),
+		"symbol":   tradingBot.GetSymbol().GetValue(),
+		"status":   string(tradingBot.GetStatus()),
+		"strategy": tradingBot.GetStrategy().GetName(),
+	}
+	if reason != "" {
+		data["reason"] = reason
+	}
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		fmt.Printf("⚠️ Failed to marshal %s event for bot %s: %v\n", routingKey, tradingBot.Id.GetValue(), err)
+		return
+	}
+
+	event := queue.Message{
+		RoutingKey: routingKey,
+		Payload:    payload,
+		Headers: map[string]string{
+			"event_type": routingKey,
+		},
+	}
+	if err := messageBroker.Publish(exchangeName, event); err != nil {
+		fmt.Printf("⚠️ Failed to publish %s event for bot %s: %v\n", routingKey, tradingBot.Id.GetValue(), err)
+	}
+}
+
+// recoverStrategyLoopPanic stops a bot whose strategy loop panicked, so the panic cannot kill
+// the whole process and the bot is not restarted by auto-recovery on the next boot.
+// It must be called directly by a deferred call in the loop goroutine.
+func (uc *StartTradingBotUseCase) recoverStrategyLoopPanic(tradingBot *entity.TradingBot) {
+	r := recover()
+	if r == nil {
+		return
+	}
+
+	botId := tradingBot.Id.GetValue()
+	fmt.Printf("🚨 Trading bot %s strategy loop panicked: %v\n", botId, r)
+
+	// Persisting the stopped status must never panic out of this goroutine either.
+	defer func() {
+		if r2 := recover(); r2 != nil {
+			fmt.Printf("🚨 Failed to persist stopped status for trading bot %s after panic: %v\n", botId, r2)
+		}
+	}()
+
+	if uc.tradingBotRepository == nil {
+		return
+	}
+
+	// Prefer the persisted copy so concurrent changes (e.g. a stop request) are not overwritten.
+	botToStop := tradingBot
+	if currentBot, err := uc.tradingBotRepository.GetTradeByID(botId); err == nil && currentBot != nil {
+		botToStop = currentBot
+	}
+
+	if botToStop.GetStatus() == entity.StatusStopped {
+		return
+	}
+
+	// The entity exposes no way to set StatusError, so the bot is marked STOPPED.
+	if err := botToStop.Stop(); err != nil {
+		fmt.Printf("🚨 Failed to stop trading bot %s after panic: %v\n", botId, err)
+		return
+	}
+	if err := uc.tradingBotRepository.Update(botToStop); err != nil {
+		fmt.Printf("🚨 Failed to persist stopped status for trading bot %s after panic: %v\n", botId, err)
+		return
+	}
+
+	fmt.Printf("🛑 Trading bot %s marked as STOPPED after strategy loop panic\n", botId)
+	uc.publishBotEvent("trading_bot.stopped", botToStop, fmt.Sprintf("strategy loop panic: %v", r))
+}
+
 func (uc *StartTradingBotUseCase) runStrategyLoop(tradingBot *entity.TradingBot) {
+	defer uc.recoverStrategyLoopPanic(tradingBot)
+
 	// Execute first analysis immediately
 	shouldContinue := uc.executeAnalysisAndTrade(tradingBot)
 	if !shouldContinue {
@@ -122,7 +230,7 @@ func (uc *StartTradingBotUseCase) runStrategyLoop(tradingBot *entity.TradingBot)
 	// Then start the ticker for subsequent executions
 	ticker := time.NewTicker(time.Duration(tradingBot.GetIntervalSeconds()) * time.Second)
 	defer ticker.Stop()
-	
+
 	// Status ticker - show summary every 10 minutes
 	statusTicker := time.NewTicker(10 * time.Minute)
 	defer statusTicker.Stop()
@@ -146,7 +254,7 @@ func (uc *StartTradingBotUseCase) runStrategyLoop(tradingBot *entity.TradingBot)
 					if err == nil && len(klines) > 0 {
 						currentPrice := klines[len(klines)-1].Close()
 						profit := ((currentPrice - entryPrice) / entryPrice) * 100
-						fmt.Printf("📊 [%s] Status: POSITIONED (entry: %.2f, current: %.2f, profit: %.2f%%)\n", 
+						fmt.Printf("📊 [%s] Status: POSITIONED (entry: %.2f, current: %.2f, profit: %.2f%%)\n",
 							symbol, entryPrice, currentPrice, profit)
 					}
 				}
@@ -198,13 +306,13 @@ func (uc *StartTradingBotUseCase) ExecuteAnalysisAndTrade(tradingBot *entity.Tra
 
 	// Format analysis data in a more readable way
 	symbol := tradingBot.GetSymbol().GetValue()
-	
+
 	// Only log significant events (no verbose HOLD messages)
 	if analysisResult.Decision != entity.Hold {
 		var analysisStr string
 		if reason, exists := analysisResult.AnalysisData["reason"]; exists {
 			analysisStr = fmt.Sprintf("reason: %v", reason)
-			
+
 			// Add key metrics if available
 			if currentPrice, exists := analysisResult.AnalysisData["currentPrice"]; exists {
 				analysisStr += fmt.Sprintf(", price: %.2f", currentPrice)
@@ -223,7 +331,7 @@ func (uc *StartTradingBotUseCase) ExecuteAnalysisAndTrade(tradingBot *entity.Tra
 		} else {
 			analysisStr = fmt.Sprintf("%+v", analysisResult.AnalysisData)
 		}
-		
+
 		fmt.Printf("🤖 [%s] %s → %s (%s)\n",
 			symbol, strategy.GetName(), analysisResult.Decision, analysisStr)
 	}
@@ -254,7 +362,7 @@ func (uc *StartTradingBotUseCase) executeAnalysisAndTrade(tradingBot *entity.Tra
 		fmt.Printf("❌ Error in analysis and trade for bot %s: %v\n", tradingBot.Id.GetValue(), err)
 		// Continue despite errors - don't stop the bot for temporary issues
 	}
-	
+
 	return true // Continue the loop
 }
 
@@ -335,5 +443,3 @@ func (uc *StartTradingBotUseCase) getMarketData(symbol string, intervalSeconds i
 
 	return klines, nil
 }
-
-
