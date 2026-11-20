@@ -4,107 +4,174 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Claude Code Guidance
 
-- sempre de nunca ser co author dos commits. Deixe sempre eu como o autor.
+- Never add yourself as a co-author on commits. The repository owner is always the sole author.
+- Access the VPS only with the data in the local `.env.production` (see `CLAUDE.local.md`).
+- Do not print or copy values from `.env`, `.env.production`, `.env.llm` or `http-client.private.env.json`.
 
-## Architecture Overview
+## What This Project Is
 
-This is a cryptocurrency trading bot application built in Go using Domain-Driven Design (DDD) and Clean Architecture principles. The system integrates with Binance API for trading operations and uses PostgreSQL for persistence, RabbitMQ for message queuing, and supports multiple trading strategies.
+CrypGo Machine is a single-binary Go service that runs automated spot-trading bots against Binance. Each bot is a goroutine that wakes up on a fixed interval, pulls the last 100 klines, asks its strategy for a BUY / SELL / HOLD decision, logs that decision, and places a market order when needed. Around that core sit a backtesting engine, an advisory market-sentiment pipeline (Fear & Greed + RSS + OpenAI), email and Telegram notifications over RabbitMQ, a JWT-protected REST API, and a static web dashboard.
 
-### Domain Layer (`src/domain/`)
-- **Entities**: `TradingBot` (aggregate root), `Strategy`, `TradingDecisionLog` 
-- **Value Objects**: `Symbol`, `Kline`, `Price`, `Currency`, `EntityId`, `MinimumSpread`, `Timeframe`
-- **Strategy Pattern**: `TradingStrategy` interface with `MovingAverageStrategy` and `BreakoutStrategy` implementations
-- **Domain Services**: Strategy factory with type-safe parameter validation
+- Module: `crypgo-machine`, Go 1.23, standard `net/http` (no web framework).
+- Entry point: `main.go` wires everything by hand (no DI container).
+- Persistence: PostgreSQL via `lib/pq` and hand-written SQL. Messaging: RabbitMQ via `streadway/amqp`.
+- Default market is BRL pairs (`SOLBRL`, `BTCBRL`); nothing prevents other Binance spot pairs.
 
-### Application Layer (`src/application/`)
-- **Use Cases**: Create, list, start, and stop trading bots with comprehensive business logic
-- **Repository Interfaces**: Clean abstraction over data persistence
+## Architecture
 
-### Infrastructure Layer (`src/infra/`)
-- **Database**: PostgreSQL with manual SQL migrations
-- **External APIs**: Binance integration with interface-based design for testability
-- **Message Queue**: RabbitMQ adapter for event-driven notifications
-- **HTTP Controllers**: REST API endpoints for bot management (create, list, start, stop)
+DDD + Clean Architecture in three layers under `src/`. Dependencies should point inward, with the exceptions listed under "Known Gaps".
 
-## New Features
+### Domain (`src/domain/`)
+- **Entities** (`entity/`): `TradingBot` (aggregate root), `Strategy` (name + params config), `TradingDecisionLog`, `SentimentSuggestion`, `BacktestResult`, `BacktestTrade`.
+- **Strategies** (`entity/`): `TradingStrategy` interface with `MovingAverageStrategy` and `RSIStrategy`. There is no Breakout strategy.
+- **Value objects** (`vo/`): `Symbol`, `Kline`, `Price`, `Currency`, `EntityId`, `Name`, `MinimumSpread`, `Timeframe`, `SymbolFilter`, `RSIResult`, `SentimentScore`, `SentimentLevel`, `SentimentSources`, `ProfitLoss`, `WinRate`, `Drawdown`, `User`.
+- **Services** (`service/`): `NewTradeStrategyFactory` (typed params to strategy) and `OrderValidatorService` (Binance LOT_SIZE / PRICE_FILTER / MIN_NOTIONAL).
 
-### Backtesting System
-Complete backtesting functionality for validating trading strategies with historical data:
-- **API Endpoint**: `POST /api/v1/trading/backtest`
-- **Supported Strategies**: MovingAverage, Breakout
-- **Metrics**: ROI, Win Rate, Max Drawdown, P&L tracking
-- **Real Trading Simulation**: Includes fees, position tracking, anti-whipsaw protection
+### Application (`src/application/`)
+- **Use cases** (`usecase/`): create, list, start, stop bot; list trading logs; auth; two backtest use cases; generate, list, approve sentiment suggestions.
+- **Ports** (`service/`): `MarketDataSource` (live vs historical klines) and `TradingExecutionContext` (live orders vs simulated fills). The same `StartTradingBotUseCase.ExecuteAnalysisAndTrade` runs against either pair.
+- **Repository interfaces** (`repository/`): `TradingBotRepository`, `TradingDecisionLogRepository`, `SentimentSuggestionRepository`.
 
-Example usage:
+### Infrastructure (`src/infra/`)
+- `api/` and `http/controller/`: HTTP handlers. `middleware/` + `auth/`: Bearer JWT (HS256, 24h expiry).
+- `repository/`: PostgreSQL implementations plus in-memory ones for bots and decision logs.
+- `external/`: Binance client interface, real wrapper and `BinanceClientFake` (all three live in `binance_client_fake.go`), exchange-info cache, historical klines, Fear & Greed client, RSS reader/cache/health monitor, keyword and OpenAI sentiment analyzers, aggregator.
+- `queue/`: `MessageBroker` interface and RabbitMQ adapter (topic exchange).
+- `notification/`: email (SMTP) and Telegram consumers, Telegram command handler.
+- `scheduler/`: sentiment scheduler (see Known Gaps: it is never started).
+- `database/migrations/`: plain SQL files, applied manually or by the deploy workflow.
+
+### Other top-level pieces
+- `cmd/backtest`, `cmd/backtest-demo`: CLI backtests. `cmd/test-email`, `cmd/test-minimum-profit`: manual checks.
+- `web/`: static dashboard (vanilla JS, pt-BR copy) served by the Go binary at `/`.
+- `scripts/`: deploy, backup, monitoring and parameter-optimization shell scripts. The Python files and `models/` (a ~34 GB local Ministral-8B checkpoint) are an untracked local-LLM experiment; never commit `models/`.
+
+## Live Trading Loop
+
+`StartTradingBotUseCase.Execute` flips the bot to `RUNNING`, persists it, and launches `runStrategyLoop` in a goroutine:
+
+1. Run one analysis immediately, then on every `interval_seconds` tick.
+2. Re-read the bot from the database. If it is missing or not `RUNNING`, the loop exits. This is how `stop` works: `StopTradingBotUseCase` only writes `STOPPED`; the goroutine notices on its next tick.
+3. `MarketDataSource.GetMarketData` fetches 100 klines at the Binance interval matching `interval_seconds` (`external.SecondsToInterval`).
+4. `strategy.Decide(klines, bot)` returns a decision plus an `AnalysisData` map (always includes a `reason` code).
+5. A `TradingDecisionLog` is saved for every tick, including HOLD.
+6. `TradingExecutionContext.ExecuteTrade` validates and rounds the quantity, sends a MARKET order, updates position state on the bot, persists it, and publishes `trading.buy_executed` / `trading.sell_executed`.
+
+On boot, `recoverRunningBots` in `main.go` finds bots still marked `RUNNING`, resets them to `STOPPED`, and starts them again so loops survive a restart (with `SkipNotification: true`, so a restart does not send one "started" notification per bot).
+
+`Execute` refuses to start a bot whose `interval_seconds` is not accepted by `external.SecondsToInterval`. The loop has a deferred recover: a panic stops that bot (status `STOPPED`, `trading_bot.stopped` published with a `reason`) instead of killing the process.
+
+The in-memory `TradingBot` held by the goroutine is the source of truth for position state while the loop runs; only `status` is re-read from the database.
+
+## Strategies
+
+Both strategies are position-aware (buy only when flat, sell only when positioned), check stoploss first, and refuse to sell below the bot's `minimum_profit_threshold` unless stoploss fired. `possibleProfit` is the raw percentage change from `entryPrice`; fees are not subtracted.
+
+### MovingAverage
+Simple moving averages of the close over `FastWindow` and `SlowWindow`.
+- **BUY** when `fast < slow`, not positioned, and the spread between the averages is at least `MinimumSpread` percent (anti-whipsaw).
+- **SELL** when `fast > slow`, positioned, and profit is at least the minimum threshold.
+- This is a buy-the-dip rule, not a classic golden-cross: it buys while the fast average is below the slow one.
+
+### RSI
+Wilder-smoothed RSI over `Period` (needs `Period + 1` klines).
+- **BUY** when RSI is below `OversoldThreshold` (default 30) and not positioned.
+- **SELL** when RSI is above `OverboughtThreshold` (default 70), positioned, and profit is at least the minimum threshold.
+
+### Stoploss
+`StoplossThreshold` (percent, 0 = disabled) on either strategy: when positioned and loss reaches the threshold, SELL with reason `stoploss_triggered`, bypassing the minimum-profit rule.
+
+### Where strategies get built
+Strategy construction is duplicated in three places that must stay in sync when adding a strategy or parameter:
+1. `service.NewTradeStrategyFactory` (bot creation, typed params).
+2. `entity.BuildStrategy` (rehydration from the JSON in `trade_bots.strategy_params`).
+3. `BacktestStrategyUseCase.createStrategy` (backtest request params).
+
+Live bots always get `MinimumSpread = 0.1`; only the backtest path reads `MinimumSpread` from params. In the factory an RSI threshold of 0 means "use the default" (30 / 70).
+
+## Fees and Quantity
+
+- `trading_fees` is a percentage per trade (0.1 means 0.1%).
+- On BUY, `actualQuantityHeld = executedQuantity * (1 - fee)` is stored, where the executed quantity is the order response's `ExecutedQuantity` (falling back to the rounded quantity that was sent). On SELL, `CalculateQuantityForSell()` uses it so the order never exceeds the balance. The fee is still modelled, not read from the fills.
+- `use_fixed_quantity = true`: trade the bot's `quantity`. `false`: trade `trade_amount / currentPrice`.
+- `OrderValidatorService.ValidateOrderBeforePlacement` rounds down to the symbol step size (never up: a quantity below the symbol minimum is refused, not raised) and rejects orders under the minimum notional. On refusal its `warnings` return value carries the refusal reasons. Exchange info is cached in `ExchangeInfoService`.
+- `placeBuyOrder` / `placeSellOrder` return `(executedQuantity, placed)`; a failed order is logged and the tick ends without changing position state.
+
+## Backtesting
+
+There are two engines; know which one you are touching.
+
+| | `BacktestStrategyUseCase` | `BacktestTradingBotUseCase` |
+|---|---|---|
+| Used by | `POST /api/v1/trading/backtest` | `cmd/backtest`, `cmd/backtest-demo` |
+| How it runs | Own simulator loop, calls `strategy.Decide` with a dummy bot | Reuses the live `ExecuteAnalysisAndTrade` with `HistoricalMarketDataSource` + `BacktestTradingExecutionContext` |
+| Data window | All klines from the start up to the current one | Sliding 100-kline window, same as live |
+| Extra rule | Never closes a trade at a loss unless stoploss fired | Follows the strategy decision as is |
+
+API request fields: `strategy_name`, `symbol`, `params`, `initial_capital`, `trade_amount`, `currency`, `trading_fees`, `minimum_profit_threshold`, and either inline `historical_data` or one of `use_binance_data` (+ `start_date`, `interval`), `use_yesterday`, `use_last_week`. Working examples: `example_rsi_backtest_request.json`, `example_ma_stoploss_backtest_request.json`, `simple_ma_backtest_request.json`.
+
 ```bash
-curl -X POST http://localhost:8080/api/v1/trading/backtest \
-  -H "Content-Type: application/json" \
-  -d @example_backtest_request.json
+# CLI backtest (needs Binance keys in .env)
+go run cmd/backtest/main.go -start=2024-01-01 -end=2024-01-31 -symbol=SOLBRL -fast=5 -slow=10 -interval=1h
 ```
 
-### Trading Fee Management System
-Comprehensive handling of Binance trading fees to ensure accurate live trading:
+## Sentiment Analysis (advisory)
 
-#### Fee Structure
-- **Standard Fee**: 0.1% per trade (configurable per bot)
-- **BNB Discount**: 0.075% when using BNB for fees (market standard)
-- **Fee Application**: Deducted from purchased quantity on buy orders
+`SentimentAggregator.CollectAndAnalyze` gathers the alternative.me Fear & Greed index and RSS feeds (CoinDesk, CoinTelegraph, Bitcoin.com, Decrypt, r/cryptocurrency), scores the articles with OpenAI (`gpt-4o-mini` by default) and falls back to a keyword analyzer when the LLM is disabled, fails, or hits its daily cost limit.
 
-#### Key Features
-- **Actual Quantity Tracking**: `actualQuantityHeld` field tracks real crypto amount after fees
-- **Accurate Sell Orders**: Uses actual quantity (not original order quantity) for sells
-- **Fixed vs Dynamic Quantity**: Configurable trading modes for different strategies
-- **Fee-Aware Backtesting**: Realistic simulations include trading fee calculations
+- Overall score in [-1, 1] = Fear & Greed 0.40 + news 0.35 + reddit 0.15 + social 0.10.
+- Levels: `very_bullish` at 0.3 or more, `bullish` at 0.1 or more, `bearish` at -0.1 or less, `very_bearish` at -0.3 or less, otherwise `neutral`.
+- Each analysis produces a `SentimentSuggestion` (exposure multiplier, profit threshold, interval) saved as `pending`; the user approves, customizes or ignores it.
+- Suggestions never change bots. `ApproveSentimentSuggestionUseCase` records the decision on the suggestion only; `affected_bots` is always 0 and the response says that applying to bots is not implemented. Making approval change bots is an open product decision.
+- The scheduler (full analysis every 4h, quick check hourly) starts only when `SENTIMENT_SCHEDULER_ENABLED=true`; each full analysis calls OpenAI.
+- Telegram commands (only from `TELEGRAM_CHAT_ID`): `/sentiment`, `/quick`, `/status`, `/help`, `/oi`.
 
-#### Trading Modes
-1. **Fixed Quantity Mode** (`useFixedQuantity: true`):
-   - Always trades the same crypto amount (e.g., 0.001 BTC)
-   - Suitable for DCA strategies and consistent position sizing
-   
-2. **Dynamic Quantity Mode** (`useFixedQuantity: false`):
-   - Calculates quantity based on fixed fiat amount (e.g., $100 worth of BTC)
-   - Adjusts to price changes, maintains consistent investment amount
+## Events (RabbitMQ)
 
-#### Database Schema
-- **`actual_quantity_held`**: DECIMAL(20,8) - Real quantity after buy fees
-- **`use_fixed_quantity`**: BOOLEAN - Trading mode selection (default: true)
+One topic exchange, `trading_bot`.
 
-#### API Changes
-- **Create Bot Request**: Includes `use_fixed_quantity` parameter
-- **Bot Response**: Shows both `quantity` and `actual_quantity_held` fields
+| Routing key | Published by | Consumed by |
+|---|---|---|
+| `trading_bot.created` | `CreateTradingBotUseCase` | email, Telegram |
+| `trading_bot.started` | `StartTradingBotUseCase` (not on boot recovery) | email, Telegram |
+| `trading_bot.stopped` | `StopTradingBotUseCase`, and the loop's panic recovery | email, Telegram |
+| `trading.buy_executed`, `trading.sell_executed` | `LiveTradingExecutionContext` | email, Telegram |
+| `sentiment.analysis.completed` | `SentimentScheduler` | Telegram sentiment consumer |
+| `sentiment.suggestion.pending`, `sentiment.extreme.detected` | nobody yet | subscribed, never received |
 
-## Common Development Commands
+Queues: `email.notification.queue`, `telegram.notification.queue`, `telegram.sentiment.queue`. Consumers auto-ack and handler errors are dropped.
 
-### Build and Run
+## HTTP API
+
+All routes are registered in `main.go` on the default mux, port 8080. Protected routes need `Authorization: Bearer <token>` from `/api/v1/auth/login`.
+
+| Route | Auth | Purpose |
+|---|---|---|
+| `/api/v1/health` | public | Liveness |
+| `/api/v1/auth/login`, `/refresh`, `/validate` | public | JWT issue, refresh, check |
+| `/api/v1/trading/create_trading_bot` | JWT | Create bot (`MovingAverage` or `RSI`; strategy params go in `params`) |
+| `/api/v1/trading/list` | JWT | List bots |
+| `/api/v1/trading/start`, `/stop` | JWT | Body `{"bot_id": "..."}` |
+| `/api/v1/trading/backtest` | JWT | Run backtest |
+| `/api/v1/trading/logs` | JWT | Decision logs with `decision`, `symbol`, `limit`, `offset` |
+| `/api/v1/sentiment/generate`, `/suggestions`, `/approve`, `/analytics` | JWT | Suggestion workflow |
+| `/api/v1/sentiment/analyze`, `/quick-check`, `/data-sources/validate` | JWT | Manual analysis |
+| `/api/v1/sentiment/scheduler/status`, `/scheduler/trigger` | JWT | Scheduler state, one-off run |
+| `/api/v1/sentiment/health` | public | Sentiment health |
+| `/api/v1/telegram/test` | JWT | Sends a test message |
+| `/api/v1/telegram/status` | public | Reports Telegram status |
+| `/api/v1/telegram/test-sentiment`, `/sentiment/status` | JWT | Sentiment notification test |
+| `/` | public | Static dashboard from `./web/` |
+
+`api-tests.http` (JetBrains HTTP client) has ready-made requests; environments live in `http-client.env.json`.
+
+## Database
+
+Three tables: `trade_bots`, `trading_decision_logs` (FK to `trade_bots`), `sentiment_suggestions`. Strategy params, analysis data and market data are stored as JSON text.
+
+There is no migration tool and no migrations table. Apply files in order; note that two files share the `004` prefix.
+
 ```bash
-# Build the application
-go build -o crypgo-machine
-
-# Run the application (requires .env file and database)
-go run main.go
-
-# Start dependencies with Docker Compose
-docker-compose up -d
-```
-
-### Testing
-```bash
-# Run all tests
-go test ./...
-
-# Run tests with verbose output
-go test -v ./...
-
-# Run specific test
-go test -v -run TestCreateTradingBotUseCase_Success ./src/application/usecase
-
-# Run tests for specific package
-go test -v ./src/domain/vo/
-```
-
-### Database Management
-```bash
-# Execute migrations manually (in order)
 psql -d crypgo_machine -f src/infra/database/migrations/001_create_trade_bots_table.sql
 psql -d crypgo_machine -f src/infra/database/migrations/002_add_strategy_params_column.sql
 psql -d crypgo_machine -f src/infra/database/migrations/003_create_trading_decision_logs_table.sql
@@ -118,231 +185,79 @@ psql -d crypgo_machine -f src/infra/database/migrations/009_add_actual_quantity_
 psql -d crypgo_machine -f src/infra/database/migrations/010_add_use_fixed_quantity_column.sql
 ```
 
-### Production Monitoring
+`scripts/run-migrations.sh` applies them in order using the database settings from `.env.production` or `.env`. When adding a column to `trade_bots`, update the INSERT, UPDATE and every SELECT in `trading_bot_repository.database.go`, plus `entity.Restore`.
+
+## Common Commands
+
 ```bash
-# Monitor logs in real-time (basic)
-./scripts/monitor-logs.sh
+# Local dependencies: Postgres (5432), test Postgres (5433), RabbitMQ (5672, UI 15672)
+docker-compose up -d
 
-# Advanced dashboard with tmux (multiple windows)
-./scripts/monitor-dashboard.sh
+# Run (fails fast without .env, Postgres and RabbitMQ)
+go run main.go
 
-# Alert system for critical errors
-./scripts/monitor-alerts.sh
+# Build
+go build -o crypgo-machine
+
+# Tests
+go test ./...
+go test -v ./src/domain/entity/
+go test -v -run TestCreateTradingBotUseCase_Success ./src/application/usecase
 ```
 
-#### Monitoring Commands for VPS (31.97.249.4)
+## Environment Variables
+
+- **Required at boot**: `BINANCE_API_KEY`, `BINANCE_SECRET_KEY`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `RABBIT_MQ_URL`.
+- **Auth (required at boot, no fallbacks)**: `AUTH_EMAIL`, `AUTH_PASSWORD`, `JWT_SECRET`. The app calls `log.Fatalf` when any is empty. `.env.example` lists every variable with placeholder values.
+- **Email**: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `FROM_EMAIL`, `TARGET_EMAIL`. With `TARGET_EMAIL` empty the email consumer is not started.
+- **Telegram**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Telegram is disabled, not fatal, when these are missing.
+- **Sentiment / LLM**: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_MAX_TOKENS`, `OPENAI_TEMPERATURE`, `USE_LLM_ANALYSIS`, `SENTIMENT_SCHEDULER_ENABLED` (default off).
+- **Local-LLM experiment only**: `HUGGINGFACE_TOKEN` in `.env.llm`.
+
+`loadEnv` calls `log.Fatalf` when `.env` is absent. The Docker image copies `.env.production` to `.env` at build time.
+
+## Testing
+
+- `BinanceClientFake` gives canned klines and orders; `CreateWhipsawKlines()` and `CreateStrongTrendKlines()` generate market scenarios. Its exchange info only knows the symbols listed in `FakeGetExchangeInfoService`.
+- In-memory repositories exist for bots and decision logs; use them for use-case tests.
+- Database-backed tests load `.env` and need Postgres. `src/infra/api` tests need the test database on port 5433 (`postgres-test` in `docker-compose.yml`).
+- Clean up with `cleanupTradeBot()`; delete `trading_decision_logs` before `trade_bots` because of the foreign key.
+- Constructor signatures to keep in sync in tests: `NewCreateTradingBotUseCase(repo, client, broker, exchange)` and `Decide(klines, tradingBot)`.
+
+### Current test status (2026-11-20, branch `feat/dashboard-analysis`, uncommitted bug-fix work)
+`go build ./...` and `go vet ./...` pass. `go test ./...` passes in every package except `src/infra/api`, whose five older tests need the test database on port 5433 (not running when this was checked; the newer controller tests use the in-memory repository and pass).
+
+## Deployment
+
+- **VPS**: `/opt/crypgo-machine`, run with `docker-compose.full.yml`: `crypgo-app`, `postgres`, `rabbitmq`, `n8n`, `n8n-postgres`, `nginx`, `certbot`.
+- **CD**: `.github/workflows/deploy.yml` is the only workflow (there is no CI workflow). It runs on push to `main` or manual dispatch with an optional `skip_backup` input: SSH in, back up, rebuild containers, run migrations, health check, roll back on failure, clean up, security check. Secrets: `SSH_PRIVATE_KEY`, `SSH_HOST`, `SSH_USER`, `SSH_PORT`. Setup notes in `SETUP_SSH_GITHUB_ACTIONS.md`.
+- **nginx** (`nginx.conf`): a `geo $allowed_ip` whitelist guards the API, health, dashboard and n8n (403 for everyone else); webhooks under `/webhook/` are open; dotfiles, script extensions and common admin paths return 404; rate limits are 10 r/s (burst 20) for `/api/` and 5 r/s (burst 10) elsewhere. Server blocks: default on 80, n8n on 8081, plus TLS vhosts for the trading and n8n subdomains.
+- **Adding an IP**: add a line to the `geo $allowed_ip` block, then `docker-compose -f docker-compose.full.yml exec nginx nginx -s reload`.
+
 ```bash
-# Quick log monitoring
+# Tail app logs on the VPS
 ssh root@31.97.249.4 "cd /opt/crypgo-machine && docker-compose -f docker-compose.full.yml logs -f --tail 50 crypgo-app"
 
-# Check container status
+# Container status
 ssh root@31.97.249.4 "cd /opt/crypgo-machine && docker-compose -f docker-compose.full.yml ps"
-
-# View resource usage
-ssh root@31.97.249.4 "docker stats --no-stream"
-
-# Follow error logs only
-ssh root@31.97.249.4 "cd /opt/crypgo-machine && docker-compose -f docker-compose.full.yml logs -f | grep -i -E 'error|warn|fatal'"
 ```
 
-## Testing Patterns and Infrastructure
+Local helpers: `scripts/monitor-logs.sh`, `scripts/monitor-dashboard.sh` (tmux), `scripts/monitor-alerts.sh`, `scripts/backup-database.sh`, `scripts/check-status.sh`.
 
-### Repository Testing
-- Database implementations use real PostgreSQL connections with cleanup procedures
-- In-memory implementations provide fast, isolated testing
-- Both implementations are tested to ensure interface compliance
+## Known Gaps
 
-### Mock and Fake Implementations
-- `BinanceClientFake`: Configurable responses with predefined market scenarios (whipsaw, strong trends)
-- `MockMessageBroker`: No-op implementation for isolated testing
-- In-memory repositories with thread-safe concurrent access
+Verified in code on 2026-11-20. Check before relying on any of these being fixed. The tracked bug list, with per-bug detail and status, lives in a Claude artifact database (collection `bugs`).
 
-### Test Data Management
-- Environment configuration loaded from `.env` files during tests
-- `cleanupTradeBot()` functions prevent test interference
-- Predefined market data generators in `external.CreateWhipsawKlines()` and `external.CreateStrongTrendKlines()`
-
-### Use Case Testing Patterns
-- Constructor parameter validation: `NewCreateTradingBotUseCase(repo, client, broker, exchange)`
-- Strategy parameter testing with both valid and invalid configurations
-- Anti-whipsaw protection testing with `MinimumSpread` validation
-
-## Key Domain Concepts
-
-### Trading Strategies
-- Strategies implement `TradingStrategy` interface with `Decide(klines, tradingBot)` method
-- Position-aware: bots can only buy when not positioned, sell when positioned
-- Anti-whipsaw protection using `MinimumSpread` to prevent false signals
-- Strategy parameters stored as JSON in database and reconstructed via factory
-
-### Value Object Validation
-- `Symbol`: Flexible validation for any Binance trading pair (6-15 chars, uppercase letters/numbers)
-- `Kline`: Comprehensive OHLCV validation with proper ordering
-- `EntityId`: UUID-based with validation
-- `MinimumSpread`: Percentage-based for strategy configuration
-
-### Fee Management & Quantity Calculation
-- **Fee Tracking**: `actualQuantityHeld` tracks crypto amount after trading fees
-- **Sell Quantity Logic**: Uses `CalculateQuantityForSell()` method for accurate sell orders
-- **Trading Modes**: 
-  - Fixed Quantity: Always trade same crypto amount (e.g., 0.001 BTC)
-  - Dynamic Quantity: Calculate crypto amount from fiat value (e.g., $100 worth)
-- **Fee Integration**: Both live trading and backtesting account for 0.1% trading fees
-- **Database Fields**: `actual_quantity_held` and `use_fixed_quantity` for complete state management
-
-### Repository Pattern
-- Interface definitions in `src/application/repository/`
-- Database implementations in `src/infra/repository/`
-- Thread-safe in-memory implementations for testing
-
-## Environment Configuration
-
-Required environment variables:
-- `BINANCE_API_KEY`, `BINANCE_SECRET_KEY`: Binance API credentials
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: PostgreSQL connection
-- `RABBIT_MQ_URL`: RabbitMQ connection string
-
-## Security Implementation
-
-### IP Whitelisting and Rate Limiting (nginx.conf)
-The application implements comprehensive security measures to protect against automated attacks and unauthorized access:
-
-#### IP Whitelisting
-- **Geo-based IP filtering**: Uses nginx `geo` module to define allowed IPs
-- **API Protection**: `/api/` and `/health` endpoints restricted to whitelisted IPs only
-- **Automatic blocking**: Non-whitelisted IPs receive 403 Forbidden with JSON error message
-- **Localhost access**: Includes `127.0.0.1` and `::1` for local development
-
-#### Attack Pattern Prevention
-- **Sensitive files**: Blocks access to `.env`, `.git`, `.htaccess`, etc.
-- **Script execution**: Prevents access to `.php`, `.asp`, `.jsp`, `.cgi` files
-- **Common attack paths**: Blocks `/wp-admin`, `/phpmyadmin`, `/admin` patterns
-- **Returns 404**: All blocked resources return 404 (not 403) to avoid information disclosure
-
-#### Rate Limiting
-- **API endpoints**: 10 requests/second with burst capacity of 20
-- **General requests**: 5 requests/second with burst capacity of 10
-- **Protection against**: DDoS attacks, brute force attempts, resource exhaustion
-
-#### Security Headers
-- `X-Frame-Options: SAMEORIGIN` - Prevents clickjacking
-- `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
-- `X-XSS-Protection: 1; mode=block` - Enables XSS filtering
-- `X-Robots-Tag: noindex, nofollow` - Prevents search engine indexing
-
-#### Emergency Access
-To temporarily disable IP restrictions (for emergency access):
-1. SSH to server: `ssh root@31.97.249.4`
-2. Comment out the `if ($allowed_ip = 0)` blocks in nginx.conf
-3. Reload nginx: `docker-compose -f docker-compose.full.yml exec nginx nginx -s reload`
-
-#### Adding New IPs
-To whitelist additional IP addresses, modify the `geo $allowed_ip` block in nginx.conf:
-```nginx
-geo $allowed_ip {
-    default 0;
-    177.181.176.178 1;  # Current authorized IP
-    NEW.IP.ADD.RESS 1;  # Add new IP here
-    127.0.0.1 1;        # Localhost
-    ::1 1;              # IPv6 localhost
-}
-```
-
-## CI/CD Pipeline (GitHub Actions)
-
-### Automated Deployment to VPS
-The project uses GitHub Actions for continuous integration and deployment to the production VPS (31.97.249.4).
-
-#### GitHub Actions Workflows
-
-##### 1. CI Pipeline (`.github/workflows/ci.yml`)
-Triggers on: Push to main/develop branches, Pull Requests
-
-**Features:**
-- **Multi-environment testing** with PostgreSQL and RabbitMQ services
-- **Code quality checks**: go vet, staticcheck, gosec security scanning
-- **Test coverage** reporting with Codecov integration
-- **Docker image building** and testing
-- **Database migration testing** to ensure migrations work correctly
-- **Vulnerability scanning** with Trivy for high/critical security issues
-
-**Test Environment:**
-- PostgreSQL 16 with test database
-- RabbitMQ 3 with management interface
-- Go 1.23 with module caching
-- Comprehensive security scanning
-
-##### 2. CD Pipeline (`.github/workflows/deploy.yml`)
-Triggers on: Push to main branch, Manual dispatch
-
-**Deployment Process:**
-1. **SSH Connection**: Secure connection to VPS using dedicated SSH key
-2. **Backup Creation**: Automatic database and application backup before deployment
-3. **Zero-downtime Deployment**: Docker container updates with minimal service interruption
-4. **Database Migrations**: Automatic execution of pending migrations
-5. **Health Checks**: API functionality and container status verification
-6. **Automatic Rollback**: If health checks fail, automatic restore from backup
-7. **Security Validation**: Post-deployment verification of IP whitelisting and nginx rules
-
-**Backup Strategy:**
-- Database dump with pg_dump
-- Application files archive (excluding logs and temp files)
-- Environment configuration backup
-- Retention of last 5 backups with automatic cleanup
-
-#### SSH Configuration for GitHub Actions
-
-**Required GitHub Secrets:**
-- `SSH_PRIVATE_KEY`: Private SSH key for VPS access (see SETUP_SSH_GITHUB_ACTIONS.md)
-- `SSH_HOST`: 31.97.249.4
-- `SSH_USER`: root
-- `SSH_PORT`: 22
-
-**Security Features:**
-- Dedicated SSH key pair for CI/CD (separate from personal keys)
-- Automated backup before every deployment
-- Health check validation with automatic rollback
-- Post-deployment security verification
-
-#### Manual Deployment Trigger
-You can manually trigger deployment with options:
-```
-GitHub Repository → Actions → CD - Deploy to Production → Run workflow
-Options: 
-- Skip backup (for emergency deployments)
-```
-
-#### Setup Instructions
-1. **Configure SSH Access**: Follow instructions in `SETUP_SSH_GITHUB_ACTIONS.md`
-2. **Add GitHub Secrets**: Configure all required secrets in repository settings
-3. **Test SSH Connection**: Verify GitHub Actions can connect to VPS
-4. **First Deployment**: Push to main branch or manually trigger deployment
-
-#### Monitoring Deployment
-- **GitHub Actions logs**: Real-time deployment progress and status
-- **VPS monitoring**: Use existing monitoring scripts to check post-deployment status
-- **Health endpoints**: Automated verification of API functionality
-- **Security validation**: Automatic verification that security measures remain active
-
-#### Emergency Procedures
-- **Manual rollback**: SSH to VPS and restore from latest backup in `/opt/backups/`
-- **Disable CI/CD**: Temporarily disable workflows in GitHub repository settings
-- **Emergency access**: Use personal SSH key if GitHub Actions key is compromised
-
-## Known Issues and Patterns
-
-### Test Compilation Issues
-When adding new use cases or modifying constructors:
-- Ensure `MockMessageBroker` implements complete `queue.MessageBroker` interface
-- Update all `NewCreateTradingBotUseCase` calls with proper parameter count (repo, client, broker, exchange)
-- Import `"crypgo-machine/src/infra/queue"` when using message broker mocks
-
-### Strategy Testing
-- Strategy `Decide()` method requires both `klines` and `tradingBot` parameters
-- Test cases should verify both decision type and analysis data (spread calculations, reasons)
-- Use predefined klines generators for consistent market scenarios
-
-### Database Testing
-- Always clean up test data using `cleanupTradeBot()` to handle foreign key constraints
-- Delete `trading_decision_logs` before `trade_bots` due to foreign key relationships
-- Use both in-memory and database repositories in tests for speed vs. integration coverage
+- **Production needs new env vars before the next deploy.** `AUTH_EMAIL`, `AUTH_PASSWORD` and `JWT_SECRET` are now mandatory; `.env.production` on the VPS does not define them yet, so the app will refuse to boot there until they are added.
+- **Old credentials are still in git history**, and the tracked `test-build` binary contains the old password. Rotate the password and JWT secret and remove the binary.
+- **Passwords are compared in plaintext** (constant-time) in `auth_usecase.go`; a bcrypt hash would need `golang.org/x/crypto`.
+- **`/api/v1/sentiment/scheduler/trigger` only works while the scheduler is running** (`TriggerManualAnalysis` returns an error otherwise), so with `SENTIMENT_SCHEDULER_ENABLED` off, use `/api/v1/sentiment/analyze` or the Telegram commands.
+- **Suggested intervals must be Binance kline intervals.** The table exists twice: `entity.generateSuggestions` and `MarketSentimentService.GetSentimentSuggestions`; keep them in sync (`bullish` is 900s because Binance has no 10m kline).
+- **`use_fixed_quantity` defaults to `false` when omitted** from the create request (non-pointer bool), despite the column default of `true`.
+- **A panicking bot is marked `STOPPED`, not `ERROR`.** `entity.StatusError` exists but `TradingBot` has no method to set it.
+- **Fees and entry price are approximations.** Held quantity is `executed * (1 - fee%)` regardless of the commission asset; entry price is the last candle close, not the average fill price. A partially filled SELL still closes the position in state.
+- **Port 8080 is published on the host** in `docker-compose.full.yml` (monitoring scripts use it), so nginx whitelisting only protects the app if the VPS firewall blocks that port from outside.
+- **Shared execution context.** All live bots share one `LiveTradingExecutionContext`; its `Stop()` would halt every loop. Per-bot stop goes through the database status.
+- **Layering leaks.** Application code imports `infra/external` and `infra/queue`; `domain/service/order_validator.service.go` imports `infra/external`; `CreateTradingBotUseCase` takes a concrete `binance.Client` it never uses.
+- **Dead code.** `StartTradingBotUseCase.getMarketData` and `convertIntervalSecondsToBinanceInterval` are superseded by `LiveMarketDataSource`; `external.SymbolFilters.AdjustQuantityToStepSize` is unused and still rounds up to the minimum quantity (the live path uses `vo.SymbolFilter`); `main_bkp.txt` is a leftover.
+- **Dashboard copy is hardcoded pt-BR.** `web/` has no i18n layer yet; new UI text needs one before it can follow the project's internationalization rule.
