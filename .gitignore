@@ -54,3 +54,6 @@ main
 # Test and optimization results
 optimization_results/
 scripts/optimization_results/
+
+# Local state of cmd/basis-monitor
+.basis-monitor/
