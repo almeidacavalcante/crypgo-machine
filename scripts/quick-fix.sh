@@ -100,12 +100,12 @@ sleep 10
 
 # 9. Testar
 echo -e "${BLUE}[STEP 8]${NC} Testando aplicação..."
-if curl -s http://localhost:8080/api/v1/trading/list &>/dev/null; then
+if curl -s http://localhost:8080/api/v1/health &>/dev/null; then
     echo -e "${GREEN}[SUCCESS]${NC} ✅ API está funcionando!"
     echo ""
     echo "🎉 Aplicação está online!"
     echo "• API: http://$(hostname -I | awk '{print $1}'):8080"
-    echo "• Teste: curl http://localhost:8080/api/v1/trading/list"
+    echo "• Teste: curl http://localhost:8080/api/v1/health"
 else
     echo -e "${RED}[ERROR]${NC} ❌ API ainda não está respondendo"
     echo ""

@@ -142,14 +142,14 @@ test_api() {
     echo ""
     
     echo -e "${BLUE}[TEST]${NC} Testando endpoint direto (porta 8080)..."
-    if curl -s --max-time 5 http://${VPS_HOST}:8080/api/v1/trading/list > /dev/null; then
+    if curl -s --max-time 5 http://${VPS_HOST}:8080/api/v1/health > /dev/null; then
         echo -e "${GREEN}✅ API direta: OK${NC}"
     else
         echo -e "${RED}❌ API direta: FALHOU${NC}"
     fi
     
     echo -e "${BLUE}[TEST]${NC} Testando endpoint via Nginx (porta 80)..."
-    if curl -s --max-time 5 http://${VPS_HOST}/api/v1/trading/list > /dev/null; then
+    if curl -s --max-time 5 http://${VPS_HOST}/api/v1/health > /dev/null; then
         echo -e "${GREEN}✅ API via Nginx: OK${NC}"
     else
         echo -e "${RED}❌ API via Nginx: FALHOU${NC}"

@@ -107,7 +107,7 @@ check_api() {
     log_message "INFO" "Verificando API..."
     
     # Testar endpoint principal
-    if ! curl -s --max-time 10 "http://${VPS_HOST}:8080/api/v1/trading/list" > /dev/null; then
+    if ! curl -s --max-time 10 "http://${VPS_HOST}:8080/api/v1/health" > /dev/null; then
         send_alert "API_DOWN" "API não está respondendo na porta 8080"
         return 1
     fi
