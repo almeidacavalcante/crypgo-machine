@@ -43,6 +43,7 @@ DDD + Clean Architecture in three layers under `src/`. Dependencies should point
 
 ### Other top-level pieces
 - `cmd/backtest`, `cmd/backtest-demo`: CLI backtests. `cmd/test-email`, `cmd/test-minimum-profit`: manual checks.
+- `cmd/basis-monitor`: read-only Deribit futures basis alert, run by GitHub Actions (see "Futures Basis Monitor").
 - `web/`: static dashboard (vanilla JS, pt-BR copy) served by the Go binary at `/`.
 - `scripts/`: deploy, backup, monitoring and parameter-optimization shell scripts. The Python files and `models/` (a ~34 GB local Ministral-8B checkpoint) are an untracked local-LLM experiment; never commit `models/`.
 
@@ -125,6 +126,21 @@ go run cmd/backtest/main.go -start=2024-01-01 -end=2024-01-31 -symbol=SOLBRL -fa
 - Suggestions never change bots. `ApproveSentimentSuggestionUseCase` records the decision on the suggestion only; `affected_bots` is always 0 and the response says that applying to bots is not implemented. Making approval change bots is an open product decision.
 - The scheduler (full analysis every 4h, quick check hourly) starts only when `SENTIMENT_SCHEDULER_ENABLED=true`; each full analysis calls OpenAI.
 - Telegram commands (only from `TELEGRAM_CHAT_ID`): `/sentiment`, `/quick`, `/status`, `/help`, `/oi`.
+
+## Futures Basis Monitor (cash-and-carry signal)
+
+`cmd/basis-monitor` runs once per invocation: it reads the Deribit public API (no key), computes the basis of every dated BTC future over the index, prints the curve, and sends a Telegram alert when the gross annualized basis reaches the threshold. It never places orders. It is independent from the main binary: no `.env`, Postgres or RabbitMQ.
+
+- Schedule: `.github/workflows/basis-monitor.yml`, every 15 minutes, plus manual dispatch (`threshold_pct=0` forces a test alert; manual runs are stateless).
+- Code: `vo.FuturesBasis` (math), `src/application/basismonitor` (use case, ports, alert text catalog for `pt-BR` and `en`), `src/infra/deribit` (market data), `src/infra/alerting` (stdlib Telegram sender, alert state stores). These packages import only the standard library and `domain/vo`; keep it that way so the scheduled job stays fast.
+- Basis = best bid of the future over the index; annualized with simple (not compounded) scaling. The net figure subtracts the futures leg only (taker fee from the API plus the 0.025% delivery fee on monthly contracts, hardcoded in `deribit_client.go`).
+- Repeat alerts are held back for `BASIS_COOLDOWN_HOURS` unless the best basis rose by `BASIS_REALERT_STEP_PCT` points. The last alert is kept in a JSON file that the workflow persists with `actions/cache`.
+- The Telegram bot token is part of the request URL, so `TelegramSender` strips the URL from errors: this repository is public and so are its job logs.
+
+```bash
+# Print the live curve without sending anything
+BASIS_DRY_RUN=true go run ./cmd/basis-monitor
+```
 
 ## Events (RabbitMQ)
 
@@ -212,6 +228,7 @@ go test -v -run TestCreateTradingBotUseCase_Success ./src/application/usecase
 - **Email**: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `FROM_EMAIL`, `TARGET_EMAIL`. With `TARGET_EMAIL` empty the email consumer is not started.
 - **Telegram**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Telegram is disabled, not fatal, when these are missing.
 - **Sentiment / LLM**: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_MAX_TOKENS`, `OPENAI_TEMPERATURE`, `USE_LLM_ANALYSIS`, `SENTIMENT_SCHEDULER_ENABLED` (default off).
+- **Basis monitor** (process environment or GitHub repository variables, never `.env`): `BASIS_CURRENCY` (BTC), `BASIS_THRESHOLD_PCT` (8), `BASIS_MIN_DAYS` (30), `BASIS_COOLDOWN_HOURS` (24), `BASIS_REALERT_STEP_PCT` (1), `BASIS_ALERT_LOCALE` (pt-BR), `BASIS_STATE_FILE`, `BASIS_DRY_RUN`, plus `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as GitHub secrets.
 - **Local-LLM experiment only**: `HUGGINGFACE_TOKEN` in `.env.llm`.
 
 `loadEnv` calls `log.Fatalf` when `.env` is absent. The Docker image copies `.env.production` to `.env` at build time.
@@ -230,7 +247,8 @@ go test -v -run TestCreateTradingBotUseCase_Success ./src/application/usecase
 ## Deployment
 
 - **VPS**: `/opt/crypgo-machine`, run with `docker-compose.full.yml`: `crypgo-app`, `postgres`, `rabbitmq`, `n8n`, `n8n-postgres`, `nginx`, `certbot`.
-- **CD**: `.github/workflows/deploy.yml` is the only workflow (there is no CI workflow). It runs on push to `main` or manual dispatch with an optional `skip_backup` input: SSH in, back up, rebuild containers, run migrations, health check, roll back on failure, clean up, security check. Secrets: `SSH_PRIVATE_KEY`, `SSH_HOST`, `SSH_USER`, `SSH_PORT`. Setup notes in `SETUP_SSH_GITHUB_ACTIONS.md`.
+- **Scheduled job**: `.github/workflows/basis-monitor.yml` runs the futures basis monitor on GitHub-hosted runners; it does not touch the VPS.
+- **CD**: `.github/workflows/deploy.yml` is the only deployment workflow (there is no CI workflow). It runs on push to `main` or manual dispatch with an optional `skip_backup` input: SSH in, back up, rebuild containers, run migrations, health check, roll back on failure, clean up, security check. Secrets: `SSH_PRIVATE_KEY`, `SSH_HOST`, `SSH_USER`, `SSH_PORT`. Setup notes in `SETUP_SSH_GITHUB_ACTIONS.md`.
 - **nginx** (`nginx.conf`): a `geo $allowed_ip` whitelist guards the API, health, dashboard and n8n (403 for everyone else); webhooks under `/webhook/` are open; dotfiles, script extensions and common admin paths return 404; rate limits are 10 r/s (burst 20) for `/api/` and 5 r/s (burst 10) elsewhere. Server blocks: default on 80, n8n on 8081, plus TLS vhosts for the trading and n8n subdomains.
 - **Adding an IP**: add a line to the `geo $allowed_ip` block, then `docker-compose -f docker-compose.full.yml exec nginx nginx -s reload`.
 
@@ -248,6 +266,8 @@ Local helpers: `scripts/monitor-logs.sh`, `scripts/monitor-dashboard.sh` (tmux),
 
 Verified in code on 2026-11-20. Check before relying on any of these being fixed. The tracked bug list, with per-bug detail and status, lives in a Claude artifact database (collection `bugs`).
 
+- **The VPS did not respond on 2026-11-20.** `31.97.249.4` answered neither ping nor ports 22, 80, 443, 8080 and 8081, and the `trading.` and `n8n.` subdomains no longer resolve. Confirm in the Hostinger panel that it still exists before relying on anything under "Deployment"; a push to `main` still triggers `deploy.yml` against it.
+- **The basis monitor has not run on GitHub Actions yet.** Whether Deribit answers GitHub-hosted runners (US addresses) is unverified until the first run.
 - **Production needs new env vars before the next deploy.** `AUTH_EMAIL`, `AUTH_PASSWORD` and `JWT_SECRET` are now mandatory; `.env.production` on the VPS does not define them yet, so the app will refuse to boot there until they are added.
 - **Old credentials are still in git history**, and the tracked `test-build` binary contains the old password. Rotate the password and JWT secret and remove the binary.
 - **Passwords are compared in plaintext** (constant-time) in `auth_usecase.go`; a bcrypt hash would need `golang.org/x/crypto`.
