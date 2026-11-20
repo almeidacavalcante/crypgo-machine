@@ -5,6 +5,7 @@ import (
 	"crypgo-machine/src/domain/entity"
 	"crypgo-machine/src/domain/service"
 	"crypgo-machine/src/domain/vo"
+	"crypgo-machine/src/infra/external"
 	"crypgo-machine/src/infra/queue"
 	"encoding/json"
 	"fmt"
@@ -33,17 +34,17 @@ func NewCreateTradingBotUseCase(
 }
 
 type InputCreateTradingBot struct {
-	Symbol                   string      `json:"symbol"`
-	Quantity                 float64     `json:"quantity"`
-	Strategy                 string      `json:"strategy"`
-	Params                   interface{} `json:"params"`
-	IntervalSeconds          int         `json:"interval_seconds"`
-	InitialCapital           float64     `json:"initial_capital"`
-	TradeAmount              float64     `json:"trade_amount"`
-	Currency                 string      `json:"currency"`
-	TradingFees              float64     `json:"trading_fees"`
-	MinimumProfitThreshold   float64     `json:"minimum_profit_threshold"`
-	UseFixedQuantity         bool        `json:"use_fixed_quantity"`
+	Symbol                 string      `json:"symbol"`
+	Quantity               float64     `json:"quantity"`
+	Strategy               string      `json:"strategy"`
+	Params                 interface{} `json:"params"`
+	IntervalSeconds        int         `json:"interval_seconds"`
+	InitialCapital         float64     `json:"initial_capital"`
+	TradeAmount            float64     `json:"trade_amount"`
+	Currency               string      `json:"currency"`
+	TradingFees            float64     `json:"trading_fees"`
+	MinimumProfitThreshold float64     `json:"minimum_profit_threshold"`
+	UseFixedQuantity       bool        `json:"use_fixed_quantity"`
 }
 
 func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
@@ -66,10 +67,13 @@ func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
 	if input.MinimumProfitThreshold < 0 {
 		return fmt.Errorf("invalid minimum profit threshold: must be greater than or equal to zero")
 	}
+	if _, errInterval := external.SecondsToInterval(input.IntervalSeconds); errInterval != nil {
+		return fmt.Errorf("invalid interval_seconds: %w", errInterval)
+	}
 
 	strategy, errStrategy := service.NewTradeStrategyFactory(input.Strategy, input.Params)
 	if errStrategy != nil {
-		return fmt.Errorf("invalid strategy: %s", err)
+		return fmt.Errorf("invalid strategy: %w", errStrategy)
 	}
 
 	bot := entity.NewTradingBot(
@@ -91,8 +95,8 @@ func (uc *CreateTradingBotUseCase) Execute(input InputCreateTradingBot) error {
 	}
 
 	payload, errMarshal := json.Marshal(map[string]interface{}{
-		"id":       bot.Id,
-		"symbol":   bot.GetSymbol(),
+		"id":       bot.Id.GetValue(),
+		"symbol":   bot.GetSymbol().GetValue(),
 		"quantity": bot.GetQuantity(),
 		"strategy": bot.GetStrategy().GetName(),
 	})

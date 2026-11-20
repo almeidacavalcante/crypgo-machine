@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/adshao/go-binance/v2"
+	"strconv"
 	"time"
 )
 
@@ -19,7 +20,7 @@ type LiveTradingExecutionContext struct {
 	tradingBotRepository         repository.TradingBotRepository
 	tradingDecisionLogRepository repository.TradingDecisionLogRepository
 	messageBroker                queue.MessageBroker
-	orderValidator              *service.OrderValidatorService
+	orderValidator               *service.OrderValidatorService
 	exchangeName                 string
 	shouldContinue               bool
 }
@@ -35,13 +36,13 @@ func NewLiveTradingExecutionContext(
 	// Create exchange info service and order validator
 	exchangeInfoService := external.NewExchangeInfoService(client)
 	orderValidator := service.NewOrderValidatorService(exchangeInfoService)
-	
+
 	return &LiveTradingExecutionContext{
 		client:                       client,
 		tradingBotRepository:         tradingBotRepo,
 		tradingDecisionLogRepository: decisionLogRepo,
 		messageBroker:                messageBroker,
-		orderValidator:              orderValidator,
+		orderValidator:               orderValidator,
 		exchangeName:                 exchangeName,
 		shouldContinue:               true,
 	}
@@ -50,7 +51,7 @@ func NewLiveTradingExecutionContext(
 // ExecuteTrade executes real trading orders via Binance API
 func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDecision, bot *entity.TradingBot, currentPrice float64, timestamp time.Time) error {
 	symbol := bot.GetSymbol().GetValue()
-	
+
 	// Calculate quantity based on useFixedQuantity flag
 	var quantity float64
 	if bot.GetUseFixedQuantity() {
@@ -68,15 +69,16 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 		}
 		fmt.Printf("🟢 [%s] BUY order (qty: %.6f, price: %.2f)\n", symbol, quantity, currentPrice)
 
-		isOrderPlaced := ctx.placeBuyOrder(symbol, quantity, currentPrice)
+		executedQuantity, isOrderPlaced := ctx.placeBuyOrder(symbol, quantity, currentPrice)
 		if isOrderPlaced {
 			// Set entry price when entering position
 			bot.SetEntryPrice(currentPrice)
-			// Calculate actual quantity held after fees
+			// Calculate actual quantity held after fees from the quantity really
+			// bought (after LOT_SIZE adjustment), not from the requested quantity
 			feePercentage := bot.GetTradingFees() / 100.0
-			actualQuantity := quantity * (1.0 - feePercentage)
+			actualQuantity := executedQuantity * (1.0 - feePercentage)
 			bot.SetActualQuantityHeld(actualQuantity)
-			fmt.Printf("📈 [%s] Position opened at %.2f (actual qty: %.6f after %.2f%% fees)\n", 
+			fmt.Printf("📈 [%s] Position opened at %.2f (actual qty: %.6f after %.2f%% fees)\n",
 				symbol, currentPrice, actualQuantity, bot.GetTradingFees())
 
 			errPosition := bot.GetIntoPosition()
@@ -89,7 +91,7 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			}
 
 			// Emit buy event
-			if err := ctx.emitTradingEvent("trading.buy_executed", bot, currentPrice, quantity, 0, 0, timestamp); err != nil {
+			if err := ctx.emitTradingEvent("trading.buy_executed", bot, currentPrice, executedQuantity, 0, 0, timestamp); err != nil {
 				fmt.Printf("⚠️ Failed to emit buy event: %v\n", err)
 			}
 		}
@@ -103,10 +105,10 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 		// Calculate quantity for sell considering fees
 		sellQuantity := bot.CalculateQuantityForSell()
 		actualProfit := ((currentPrice - bot.GetEntryPrice()) / bot.GetEntryPrice()) * 100
-		fmt.Printf("🔴 [%s] SELL order (qty: %.6f, profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
+		fmt.Printf("🔴 [%s] SELL order (qty: %.6f, profit: %.2f%%, entry: %.2f, current: %.2f)\n",
 			symbol, sellQuantity, actualProfit, bot.GetEntryPrice(), currentPrice)
 
-		isOrderPlaced := ctx.placeSellOrder(symbol, sellQuantity, currentPrice)
+		executedSellQuantity, isOrderPlaced := ctx.placeSellOrder(symbol, sellQuantity, currentPrice)
 		if isOrderPlaced {
 			// Clear entry price and actual quantity when exiting position
 			entryPrice := bot.GetEntryPrice()
@@ -124,7 +126,7 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 			}
 
 			// Emit sell event
-			if err := ctx.emitTradingEvent("trading.sell_executed", bot, currentPrice, sellQuantity, entryPrice, actualProfit, timestamp); err != nil {
+			if err := ctx.emitTradingEvent("trading.sell_executed", bot, currentPrice, executedSellQuantity, entryPrice, actualProfit, timestamp); err != nil {
 				fmt.Printf("⚠️ Failed to emit sell event: %v\n", err)
 			}
 		}
@@ -137,7 +139,7 @@ func (ctx *LiveTradingExecutionContext) ExecuteTrade(decision entity.TradingDeci
 				potentialProfit := ((currentPrice - entryPrice) / entryPrice) * 100
 				// Only log if profit is significant or price has changed meaningfully
 				if potentialProfit > 1.0 || potentialProfit < -1.0 {
-					fmt.Printf("⏸ [%s] HOLDING position (profit: %.2f%%, entry: %.2f, current: %.2f)\n", 
+					fmt.Printf("⏸ [%s] HOLDING position (profit: %.2f%%, entry: %.2f, current: %.2f)\n",
 						symbol, potentialProfit, entryPrice, currentPrice)
 				}
 			}
@@ -167,14 +169,31 @@ func (ctx *LiveTradingExecutionContext) Stop() {
 	ctx.shouldContinue = false
 }
 
-// placeBuyOrder places a real buy order via Binance API with validation
-func (ctx *LiveTradingExecutionContext) placeBuyOrder(symbol string, quantity, price float64) bool {
+// resolveExecutedQuantity returns the base-asset quantity that was really traded.
+// It prefers the exchange-reported executed quantity; when that is missing or not
+// positive it falls back to the quantity string sent to Binance and then to the
+// validator's adjusted quantity.
+func resolveExecutedQuantity(order *binance.CreateOrderResponse, formattedQty string, adjustedQty float64) float64 {
+	if order != nil {
+		if executed, err := strconv.ParseFloat(order.ExecutedQuantity, 64); err == nil && executed > 0 {
+			return executed
+		}
+	}
+	if sent, err := strconv.ParseFloat(formattedQty, 64); err == nil && sent > 0 {
+		return sent
+	}
+	return adjustedQty
+}
+
+// placeBuyOrder places a real buy order via Binance API with validation.
+// It returns the executed quantity and whether the order was placed.
+func (ctx *LiveTradingExecutionContext) placeBuyOrder(symbol string, quantity, price float64) (float64, bool) {
 	// Validate and adjust quantity
 	adjustedQty, formattedQty, shouldProceed, warnings := ctx.orderValidator.ValidateOrderBeforePlacement(symbol, quantity, price)
-	
+
 	if !shouldProceed {
 		fmt.Printf("❌ Buy order validation failed for %s\n", symbol)
-		return false
+		return 0, false
 	}
 
 	// Log warnings if any
@@ -191,21 +210,23 @@ func (ctx *LiveTradingExecutionContext) placeBuyOrder(symbol string, quantity, p
 
 	if err != nil {
 		fmt.Printf("❌ Error placing buy order: %v\n", err)
-		return false
+		return 0, false
 	}
 
-	fmt.Printf("✅ Buy order placed: OrderID=%d, Qty=%s (adj: %.8f)\n", order.OrderID, formattedQty, adjustedQty)
-	return true
+	executedQty := resolveExecutedQuantity(order, formattedQty, adjustedQty)
+	fmt.Printf("✅ Buy order placed: OrderID=%d, Qty=%s (adj: %.8f, executed: %.8f)\n", order.OrderID, formattedQty, adjustedQty, executedQty)
+	return executedQty, true
 }
 
-// placeSellOrder places a real sell order via Binance API with validation
-func (ctx *LiveTradingExecutionContext) placeSellOrder(symbol string, quantity, price float64) bool {
+// placeSellOrder places a real sell order via Binance API with validation.
+// It returns the executed quantity and whether the order was placed.
+func (ctx *LiveTradingExecutionContext) placeSellOrder(symbol string, quantity, price float64) (float64, bool) {
 	// Validate and adjust quantity
 	adjustedQty, formattedQty, shouldProceed, warnings := ctx.orderValidator.ValidateOrderBeforePlacement(symbol, quantity, price)
-	
+
 	if !shouldProceed {
 		fmt.Printf("❌ Sell order validation failed for %s\n", symbol)
-		return false
+		return 0, false
 	}
 
 	// Log warnings if any
@@ -222,11 +243,12 @@ func (ctx *LiveTradingExecutionContext) placeSellOrder(symbol string, quantity, 
 
 	if err != nil {
 		fmt.Printf("❌ Error placing sell order: %v\n", err)
-		return false
+		return 0, false
 	}
 
-	fmt.Printf("✅ Sell order placed: OrderID=%d, Qty=%s (adj: %.8f)\n", order.OrderID, formattedQty, adjustedQty)
-	return true
+	executedQty := resolveExecutedQuantity(order, formattedQty, adjustedQty)
+	fmt.Printf("✅ Sell order placed: OrderID=%d, Qty=%s (adj: %.8f, executed: %.8f)\n", order.OrderID, formattedQty, adjustedQty, executedQty)
+	return executedQty, true
 }
 
 // emitTradingEvent emits trading events to the message broker
@@ -240,18 +262,18 @@ func (ctx *LiveTradingExecutionContext) emitTradingEvent(
 	timestamp time.Time,
 ) error {
 	totalValue := price * quantity
-	
+
 	payload := map[string]interface{}{
-		"bot_id":           bot.Id.GetValue(),
-		"symbol":           bot.GetSymbol().GetValue(),
-		"action":           eventType[8:], // Remove "trading." prefix to get "buy_executed" or "sell_executed"
-		"price":            price,
-		"quantity":         quantity,
-		"total_value":      totalValue,
-		"strategy":         bot.GetStrategy().GetName(),
-		"timestamp":        timestamp,
-		"trading_fees":     bot.GetTradingFees(),
-		"currency":         bot.GetCurrency(),
+		"bot_id":       bot.Id.GetValue(),
+		"symbol":       bot.GetSymbol().GetValue(),
+		"action":       eventType[8:], // Remove "trading." prefix to get "buy_executed" or "sell_executed"
+		"price":        price,
+		"quantity":     quantity,
+		"total_value":  totalValue,
+		"strategy":     bot.GetStrategy().GetName(),
+		"timestamp":    timestamp,
+		"trading_fees": bot.GetTradingFees(),
+		"currency":     bot.GetCurrency(),
 	}
 
 	// Add extra fields for sell events
@@ -269,7 +291,7 @@ func (ctx *LiveTradingExecutionContext) emitTradingEvent(
 	message := queue.Message{
 		RoutingKey: eventType,
 		Payload:    payloadBytes,
-		Headers:    map[string]string{
+		Headers: map[string]string{
 			"timestamp": timestamp.Format(time.RFC3339),
 			"bot_id":    bot.Id.GetValue(),
 		},

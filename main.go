@@ -55,18 +55,18 @@ func main() {
 	emailService := notification.NewEmailService()
 	targetEmail := os.Getenv("TARGET_EMAIL")
 	if targetEmail == "" {
-		targetEmail = "jalmeidacn@gmail.com" // fallback
+		log.Println("⚠️ TARGET_EMAIL is not set: email notifications are disabled")
+	} else {
+		notificationConsumer := notification.NewEmailNotificationConsumer(rabbit, "trading_bot", "email.notification.queue", emailService, targetEmail)
+		go func() {
+			err := notificationConsumer.Start()
+			if err != nil {
+				log.Fatalf("❌ Error starting email notification consumer: %v", err)
+			} else {
+				fmt.Println("✅ Email notification consumer started successfully.")
+			}
+		}()
 	}
-
-	notificationConsumer := notification.NewEmailNotificationConsumer(rabbit, "trading_bot", "email.notification.queue", emailService, targetEmail)
-	go func() {
-		err := notificationConsumer.Start()
-		if err != nil {
-			log.Fatalf("❌ Error starting email notification consumer: %v", err)
-		} else {
-			fmt.Println("✅ Email notification consumer started successfully.")
-		}
-	}()
 
 	// Telegram service setup
 	telegramService := notification.NewTelegramService()
@@ -92,13 +92,10 @@ func main() {
 	}()
 
 	// Authentication setup
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "crypgo-super-secret-key-2024-production" // fallback - change in production
-	}
-
-	validEmail := "jalmeidacn@gmail.com"
-	validPassword := "CrypGo2024#StrongPass!" // Strong password
+	// Credentials and signing secret must come from the environment; there are no fallbacks.
+	jwtSecret := requireEnv("JWT_SECRET")
+	validEmail := requireEnv("AUTH_EMAIL")
+	validPassword := requireEnv("AUTH_PASSWORD")
 
 	jwtService := auth.NewJWTService(jwtSecret, "crypgo-machine")
 	authUseCase := usecase.NewAuthUseCase(jwtService, validEmail, validPassword)
@@ -136,7 +133,7 @@ func main() {
 		fmt.Println("🔧 Auto-recovery finished successfully")
 	}
 
-	stopTradingBotUseCase := usecase.NewStopTradingBotUseCase(tradingBotRepository)
+	stopTradingBotUseCase := usecase.NewStopTradingBotUseCaseWithMessaging(tradingBotRepository, rabbit, "trading_bot")
 	stopTradingBotController := api.NewStopTradingBotController(stopTradingBotUseCase)
 	http.HandleFunc("/api/v1/trading/stop", authMiddleware.RequireAuth(stopTradingBotController.Handle))
 
@@ -158,6 +155,19 @@ func main() {
 	// Market sentiment service and scheduler (with repository for auto-saving)
 	marketSentimentService := service.NewMarketSentimentServiceWithRepository(sentimentSuggestionRepository)
 	sentimentScheduler := scheduler.NewSentimentScheduler(marketSentimentService, sentimentSuggestionRepository, rabbit)
+
+	// Each full analysis calls OpenAI and costs money, so the scheduler is opt-in.
+	if os.Getenv("SENTIMENT_SCHEDULER_ENABLED") == "true" {
+		// Start validates data sources over the network; run it in the background
+		// so a slow or failing source never blocks boot or stops the app.
+		go func() {
+			if err := sentimentScheduler.Start(scheduler.GetDefaultConfig()); err != nil {
+				log.Printf("❌ Error starting sentiment scheduler: %v", err)
+			}
+		}()
+	} else {
+		fmt.Println("ℹ️ Sentiment scheduler disabled (set SENTIMENT_SCHEDULER_ENABLED=true to enable)")
+	}
 
 	// Telegram Bot Handler for interactive commands
 	telegramBotHandler := notification.NewTelegramBotHandler(telegramService, marketSentimentService)
@@ -188,7 +198,7 @@ func main() {
 
 	// Telegram test endpoints
 	telegramTestController := api.NewTelegramTestController(telegramService)
-	http.HandleFunc("/api/v1/telegram/test", telegramTestController.SendOi)   // Temporary public for demo
+	http.HandleFunc("/api/v1/telegram/test", authMiddleware.RequireAuth(telegramTestController.SendOi))
 	http.HandleFunc("/api/v1/telegram/status", telegramTestController.Status) // Public status check
 
 	// Telegram sentiment notification endpoints
@@ -205,6 +215,16 @@ func main() {
 	}
 
 	defer dbConnection.DB.Close()
+}
+
+// requireEnv returns the value of a mandatory environment variable and stops
+// the process when it is empty. The value itself is never logged.
+func requireEnv(name string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		log.Fatalf("❌ Required environment variable %s is not set", name)
+	}
+	return value
 }
 
 func loadEnv() {
@@ -259,8 +279,10 @@ func recoverRunningBots(tradingBotRepository repository.TradingBotRepository, st
 		}
 
 		// Now use existing StartTradingBotUseCase to restart the bot
+		// Skip the "bot started" notification so a restart does not notify once per bot.
 		input := usecase.InputStartTradingBot{
-			TradingBotId: botId,
+			TradingBotId:     botId,
+			SkipNotification: true,
 		}
 
 		if err := startTradingBotUseCase.Execute(input); err != nil {

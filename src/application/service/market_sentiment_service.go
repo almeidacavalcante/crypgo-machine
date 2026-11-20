@@ -10,9 +10,9 @@ import (
 )
 
 type MarketSentimentService struct {
-	aggregator          *external.SentimentAggregator
-	suggestionRepo      repository.SentimentSuggestionRepository
-	saveSuggestions     bool
+	aggregator      *external.SentimentAggregator
+	suggestionRepo  repository.SentimentSuggestionRepository
+	saveSuggestions bool
 }
 
 type SentimentCollectionResult struct {
@@ -25,7 +25,7 @@ type SentimentCollectionResult struct {
 
 func NewMarketSentimentService() *MarketSentimentService {
 	return &MarketSentimentService{
-		aggregator: external.NewSentimentAggregator(),
+		aggregator:      external.NewSentimentAggregator(),
 		saveSuggestions: false, // Will be set when repository is provided
 	}
 }
@@ -46,19 +46,19 @@ func (s *MarketSentimentService) CollectMarketSentiment() (*SentimentCollectionR
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect sentiment data: %w", err)
 	}
-	
+
 	// Convert external sentiment data to domain value objects
 	sources, err := s.convertToSentimentSources(aggregated)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert sentiment sources: %w", err)
 	}
-	
+
 	// Create sentiment suggestion entity
 	suggestion, err := entity.NewSentimentSuggestion(sources, aggregated.Reasoning, aggregated.Confidence)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sentiment suggestion: %w", err)
 	}
-	
+
 	// Save suggestion to database if repository is configured
 	if s.saveSuggestions && s.suggestionRepo != nil {
 		if err := s.suggestionRepo.Save(suggestion); err != nil {
@@ -68,7 +68,7 @@ func (s *MarketSentimentService) CollectMarketSentiment() (*SentimentCollectionR
 			fmt.Printf("💾 Sentiment suggestion saved to database (ID: %s)\n", suggestion.GetId().GetValue())
 		}
 	}
-	
+
 	return &SentimentCollectionResult{
 		Suggestion: suggestion,
 		Sources:    sources,
@@ -84,17 +84,17 @@ func (s *MarketSentimentService) QuickSentimentCheck() (*SentimentCollectionResu
 	if err != nil {
 		return nil, fmt.Errorf("failed to perform quick sentiment check: %w", err)
 	}
-	
+
 	sources, err := s.convertToSentimentSources(aggregated)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert sentiment sources: %w", err)
 	}
-	
+
 	suggestion, err := entity.NewSentimentSuggestion(sources, aggregated.Reasoning, aggregated.Confidence)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sentiment suggestion: %w", err)
 	}
-	
+
 	return &SentimentCollectionResult{
 		Suggestion: suggestion,
 		Sources:    sources,
@@ -108,29 +108,29 @@ func (s *MarketSentimentService) QuickSentimentCheck() (*SentimentCollectionResu
 func (s *MarketSentimentService) convertToSentimentSources(aggregated *external.AggregatedSentiment) (*vo.SentimentSources, error) {
 	var fearGreedIndex int
 	var newsScore, redditScore, socialScore float64
-	
+
 	// Extract Fear & Greed Index
 	if aggregated.Sources.FearGreedIndex != nil {
 		fearGreedIndex = aggregated.Sources.FearGreedIndex.Value
 	}
-	
+
 	// Extract news score
 	if aggregated.Sources.NewsAnalysis != nil {
 		newsScore = aggregated.Sources.NewsAnalysis.OverallScore
 	}
-	
+
 	// Extract Reddit score
 	redditScore = aggregated.Sources.RedditScore
-	
+
 	// Calculate social score as average of non-traditional news sources
 	socialScore = s.calculateSocialScore(aggregated)
-	
+
 	// Create domain value object
 	sources, err := vo.NewSentimentSources(fearGreedIndex, newsScore, redditScore, socialScore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sentiment sources value object: %w", err)
 	}
-	
+
 	return sources, nil
 }
 
@@ -139,23 +139,23 @@ func (s *MarketSentimentService) calculateSocialScore(aggregated *external.Aggre
 	if aggregated.Sources.NewsAnalysis == nil {
 		return 0.0
 	}
-	
+
 	socialSources := []string{"YouTubeChannels", "MastodonHashtags", "TelegramChannels"}
 	var totalScore float64
 	var count int
-	
+
 	for _, source := range socialSources {
 		if sourceData, exists := aggregated.Sources.NewsAnalysis.SourceBreakdown[source]; exists {
 			totalScore += sourceData.Score
 			count++
 		}
 	}
-	
+
 	// If no specific social sources, use Reddit as proxy
 	if count == 0 {
 		return aggregated.Sources.RedditScore
 	}
-	
+
 	return totalScore / float64(count)
 }
 
@@ -163,46 +163,46 @@ func (s *MarketSentimentService) calculateSocialScore(aggregated *external.Aggre
 func (s *MarketSentimentService) GetSentimentSuggestions(sentiment string) SentimentTradingSuggestions {
 	suggestions := map[string]SentimentTradingSuggestions{
 		"very_bullish": {
-			TradeAmountMultiplier:    1.5,
-			MinimumProfitThreshold:   0.8,
-			IntervalSeconds:          300, // 5 minutes
-			Recommendation:           "increase_exposure",
-			ReasoningText:           "Market muito otimista - considere aumentar exposição",
+			TradeAmountMultiplier:  1.5,
+			MinimumProfitThreshold: 0.8,
+			IntervalSeconds:        300, // 5 minutes
+			Recommendation:         "increase_exposure",
+			ReasoningText:          "Market muito otimista - considere aumentar exposição",
 		},
 		"bullish": {
-			TradeAmountMultiplier:    1.2,
-			MinimumProfitThreshold:   1.0,
-			IntervalSeconds:          600, // 10 minutes
-			Recommendation:           "normal_plus",
-			ReasoningText:           "Sentiment positivo - ligeiro aumento na agressividade",
+			TradeAmountMultiplier:  1.2,
+			MinimumProfitThreshold: 1.0,
+			IntervalSeconds:        900, // 15 minutes (Binance has no 10m kline)
+			Recommendation:         "normal_plus",
+			ReasoningText:          "Sentiment positivo - ligeiro aumento na agressividade",
 		},
 		"neutral": {
-			TradeAmountMultiplier:    1.0,
-			MinimumProfitThreshold:   1.5,
-			IntervalSeconds:          900, // 15 minutes
-			Recommendation:           "maintain",
-			ReasoningText:           "Sentiment neutro - manter configurações atuais",
+			TradeAmountMultiplier:  1.0,
+			MinimumProfitThreshold: 1.5,
+			IntervalSeconds:        900, // 15 minutes
+			Recommendation:         "maintain",
+			ReasoningText:          "Sentiment neutro - manter configurações atuais",
 		},
 		"bearish": {
-			TradeAmountMultiplier:    0.7,
-			MinimumProfitThreshold:   2.0,
-			IntervalSeconds:          1800, // 30 minutes
-			Recommendation:           "reduce_exposure",
-			ReasoningText:           "Sentiment negativo - considere reduzir exposição",
+			TradeAmountMultiplier:  0.7,
+			MinimumProfitThreshold: 2.0,
+			IntervalSeconds:        1800, // 30 minutes
+			Recommendation:         "reduce_exposure",
+			ReasoningText:          "Sentiment negativo - considere reduzir exposição",
 		},
 		"very_bearish": {
-			TradeAmountMultiplier:    0.4,
-			MinimumProfitThreshold:   3.0,
-			IntervalSeconds:          3600, // 1 hour
-			Recommendation:           "minimal_exposure",
-			ReasoningText:           "Market muito pessimista - considere exposição mínima",
+			TradeAmountMultiplier:  0.4,
+			MinimumProfitThreshold: 3.0,
+			IntervalSeconds:        3600, // 1 hour
+			Recommendation:         "minimal_exposure",
+			ReasoningText:          "Market muito pessimista - considere exposição mínima",
 		},
 	}
-	
+
 	if suggestion, exists := suggestions[sentiment]; exists {
 		return suggestion
 	}
-	
+
 	// Default to neutral if sentiment not recognized
 	return suggestions["neutral"]
 }
@@ -220,16 +220,16 @@ type SentimentTradingSuggestions struct {
 func (s *MarketSentimentService) ScheduleRegularAnalysis() (*SentimentCollectionResult, error) {
 	// Add timestamp logging for scheduled runs
 	fmt.Printf("🔍 Starting scheduled sentiment analysis at %s\n", time.Now().Format("2006-01-02 15:04:05"))
-	
+
 	result, err := s.CollectMarketSentiment()
 	if err != nil {
 		fmt.Printf("❌ Scheduled sentiment analysis failed: %v\n", err)
 		return nil, err
 	}
-	
-	fmt.Printf("✅ Scheduled sentiment analysis completed. Sentiment: %s, Confidence: %.2f\n", 
+
+	fmt.Printf("✅ Scheduled sentiment analysis completed. Sentiment: %s, Confidence: %.2f\n",
 		result.Suggestion.GetLevel(), result.Confidence)
-	
+
 	return result, nil
 }
 
@@ -240,6 +240,6 @@ func (s *MarketSentimentService) ValidateDataSources() error {
 	if err != nil {
 		return fmt.Errorf("data source validation failed: %w", err)
 	}
-	
+
 	return nil
 }

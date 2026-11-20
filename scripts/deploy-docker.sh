@@ -89,9 +89,9 @@ echo -e "${BLUE}[STEP 6/6]${NC} Verificando aplicação..."
 sleep 20
 
 # Testar API
-if curl -s http://localhost:8080/api/v1/trading/list &>/dev/null; then
+if curl -s http://localhost:8080/api/v1/health &>/dev/null; then
     echo -e "${GREEN}[SUCCESS]${NC} ✅ API está funcionando!"
-elif curl -s http://localhost/api/v1/trading/list &>/dev/null; then
+elif curl -s http://localhost/api/v1/health &>/dev/null; then
     echo -e "${GREEN}[SUCCESS]${NC} ✅ API está funcionando via Nginx!"
 else
     echo -e "${YELLOW}[WARNING]${NC} API ainda não está respondendo"
@@ -119,5 +119,5 @@ echo "• Parar tudo: docker-compose -f docker-compose.full.yml down"
 echo "• Reiniciar app: docker-compose -f docker-compose.full.yml restart crypgo-app"
 echo ""
 echo -e "${BLUE}[INFO]${NC} Teste a API:"
-echo "curl http://localhost:8080/api/v1/trading/list"
-echo "curl http://localhost/api/v1/trading/list"
+echo "curl http://localhost:8080/api/v1/health"
+echo "curl http://localhost/api/v1/health"

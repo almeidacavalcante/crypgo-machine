@@ -53,7 +53,7 @@ func TestNewTradeStrategyFactory_RSI_InvalidPeriod(t *testing.T) {
 func TestNewTradeStrategyFactory_RSI_InvalidThresholds(t *testing.T) {
 	params := RSIParams{
 		Period:              14,
-		OversoldThreshold:   0,   // Invalid threshold
+		OversoldThreshold:   -5.0, // Invalid threshold (zero means "use default")
 		OverboughtThreshold: 70.0,
 	}
 
@@ -160,6 +160,66 @@ func TestNewTradeStrategyFactory_UnknownStrategy(t *testing.T) {
 	}
 
 	expectedMessage := "unknown or invalid strategy: UnknownStrategy"
+	if err.Error() != expectedMessage {
+		t.Errorf("Expected error message '%s', got: %s", expectedMessage, err.Error())
+	}
+}
+
+func TestNewTradeStrategyFactory_RSI_OmittedThresholdsUseDefaults(t *testing.T) {
+	params := RSIParams{Period: 14} // thresholds omitted
+
+	strategy, err := NewTradeStrategyFactory("RSI", params)
+	if err != nil {
+		t.Fatalf("Expected no error when thresholds are omitted, got: %v", err)
+	}
+
+	strategyParams := strategy.GetParams()
+	if strategyParams["OversoldThreshold"] != 30.0 {
+		t.Errorf("Expected default OversoldThreshold 30.0, got: %v", strategyParams["OversoldThreshold"])
+	}
+	if strategyParams["OverboughtThreshold"] != 70.0 {
+		t.Errorf("Expected default OverboughtThreshold 70.0, got: %v", strategyParams["OverboughtThreshold"])
+	}
+}
+
+func TestNewTradeStrategyFactory_RSI_OnlyOneThresholdOmitted(t *testing.T) {
+	strategy, err := NewTradeStrategyFactory("RSI", RSIParams{Period: 14, OversoldThreshold: 25.0})
+	if err != nil {
+		t.Fatalf("Expected no error when OverboughtThreshold is omitted, got: %v", err)
+	}
+	p := strategy.GetParams()
+	if p["OversoldThreshold"] != 25.0 || p["OverboughtThreshold"] != 70.0 {
+		t.Errorf("Expected thresholds 25/70, got: %v/%v", p["OversoldThreshold"], p["OverboughtThreshold"])
+	}
+
+	strategy, err = NewTradeStrategyFactory("RSI", RSIParams{Period: 14, OverboughtThreshold: 80.0})
+	if err != nil {
+		t.Fatalf("Expected no error when OversoldThreshold is omitted, got: %v", err)
+	}
+	p = strategy.GetParams()
+	if p["OversoldThreshold"] != 30.0 || p["OverboughtThreshold"] != 80.0 {
+		t.Errorf("Expected thresholds 30/80, got: %v/%v", p["OversoldThreshold"], p["OverboughtThreshold"])
+	}
+}
+
+func TestNewTradeStrategyFactory_RSI_OmittedOversoldAboveOverbought(t *testing.T) {
+	// Oversold defaults to 30, which is not below an explicit overbought of 25
+	_, err := NewTradeStrategyFactory("RSI", RSIParams{Period: 14, OverboughtThreshold: 25.0})
+	if err == nil {
+		t.Fatal("Expected error when default oversold is not below overbought, got nil")
+	}
+	expectedMessage := "OversoldThreshold must be less than OverboughtThreshold"
+	if err.Error() != expectedMessage {
+		t.Errorf("Expected error message '%s', got: %s", expectedMessage, err.Error())
+	}
+}
+
+func TestNewTradeStrategyFactory_RSI_OverboughtOutOfRange(t *testing.T) {
+	_, err := NewTradeStrategyFactory("RSI", RSIParams{Period: 14, OversoldThreshold: 30.0, OverboughtThreshold: 150.0})
+	if err == nil {
+		t.Fatal("Expected error for out-of-range OverboughtThreshold, got nil")
+	}
+	expectedMessage := "OverboughtThreshold must be between 0 and 100"
 	if err.Error() != expectedMessage {
 		t.Errorf("Expected error message '%s', got: %s", expectedMessage, err.Error())
 	}

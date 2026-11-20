@@ -1,0 +1,88 @@
+name: Futures Basis Monitor
+
+# Read-only check of the Deribit futures curve. Sends a Telegram alert when the
+# annualized basis of a dated future reaches the threshold (cash-and-carry
+# entry signal). It never places orders and needs no exchange credentials.
+#
+# Required secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
+# Optional repository variables (defaults in cmd/basis-monitor/main.go):
+#   BASIS_CURRENCY, BASIS_THRESHOLD_PCT, BASIS_MIN_DAYS, BASIS_COOLDOWN_HOURS,
+#   BASIS_REALERT_STEP_PCT, BASIS_ALERT_LOCALE.
+#
+# Scheduled workflows only run from the default branch, and GitHub disables
+# them after 60 days without repository activity in a public repository.
+
+on:
+  schedule:
+    # Every 15 minutes, off the top of the hour, when GitHub's scheduler is busiest.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      threshold_pct:
+        description: 'Annualized basis threshold in percent. Empty uses the configured value; 0 forces an alert to test Telegram.'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Print the alert in the job log instead of sending it'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: basis-monitor
+  cancel-in-progress: false
+
+env:
+  STATE_FILE: .basis-monitor/state.json
+
+jobs:
+  monitor:
+    name: Check Deribit futures basis
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Manual runs are stateless so a test alert never starts the cooldown
+      # of the scheduled runs.
+      - name: Restore alert state
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.STATE_FILE }}
+          key: basis-monitor-state-${{ github.run_id }}
+          restore-keys: |
+            basis-monitor-state-
+
+      - name: Run monitor
+        id: monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BASIS_CURRENCY: ${{ vars.BASIS_CURRENCY }}
+          BASIS_THRESHOLD_PCT: ${{ inputs.threshold_pct || vars.BASIS_THRESHOLD_PCT }}
+          BASIS_MIN_DAYS: ${{ vars.BASIS_MIN_DAYS }}
+          BASIS_COOLDOWN_HOURS: ${{ vars.BASIS_COOLDOWN_HOURS }}
+          BASIS_REALERT_STEP_PCT: ${{ vars.BASIS_REALERT_STEP_PCT }}
+          BASIS_ALERT_LOCALE: ${{ vars.BASIS_ALERT_LOCALE }}
+          BASIS_STATE_FILE: ${{ github.event_name == 'schedule' && env.STATE_FILE || '' }}
+          BASIS_DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: go run ./cmd/basis-monitor
+
+      # The state only changes when an alert goes out, so a new cache entry is
+      # written only then. Restoring it on every run keeps it from expiring.
+      - name: Save alert state
+        if: github.event_name == 'schedule' && steps.monitor.outputs.outcome == 'alert_sent'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.STATE_FILE }}
+          key: basis-monitor-state-${{ github.run_id }}

@@ -5,7 +5,11 @@ import (
 	"crypgo-machine/src/domain/vo"
 	"crypgo-machine/src/infra/external"
 	"crypgo-machine/src/infra/repository"
+	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 )
 
 func setupStartTradingBotUseCase() (*StartTradingBotUseCase, *repository.TradeBotRepositoryInMemory, *repository.TradingDecisionLogRepositoryInMemory, *external.BinanceClientFake) {
@@ -277,6 +281,179 @@ func TestStartTradingBotUseCase_BinanceErrorHandling(t *testing.T) {
 	if err.Error() != expectedError {
 		t.Errorf("Expected error '%s', got '%s'", expectedError, err.Error())
 	}
+}
+
+func TestStartTradingBotUseCase_Execute_InvalidIntervalIsRejectedBeforeRunning(t *testing.T) {
+	for _, interval := range []int{0, -60, 120} {
+		useCase, tradingBotRepo, _, _ := setupStartTradingBotUseCase()
+		broker := &recordingLifecycleBroker{}
+		useCase.messageBroker = broker
+
+		symbol, _ := vo.NewSymbol("BTCUSDT")
+		strategy := entity.NewMovingAverageStrategy(7, 40)
+		bot := entity.NewTradingBot(symbol, 0.001, strategy, interval, 10000.0, 1000.0, "USDT", 0.001, 0.0, true)
+		if err := tradingBotRepo.Save(bot); err != nil {
+			t.Fatalf("failed to save bot: %v", err)
+		}
+
+		err := useCase.Execute(InputStartTradingBot{TradingBotId: bot.Id.GetValue()})
+		if err == nil {
+			t.Fatalf("interval %d: expected error, got nil", interval)
+		}
+		if !strings.Contains(err.Error(), "invalid interval_seconds") {
+			t.Errorf("interval %d: expected invalid interval_seconds error, got %v", interval, err)
+		}
+
+		stored, _ := tradingBotRepo.GetTradeByID(bot.Id.GetValue())
+		if stored.GetStatus() != entity.StatusStopped {
+			t.Errorf("interval %d: expected bot to stay %s, got %s", interval, entity.StatusStopped, stored.GetStatus())
+		}
+		if msgs, _ := broker.messagesWithKey("trading_bot.started"); len(msgs) != 0 {
+			t.Errorf("interval %d: expected no trading_bot.started event, got %d", interval, len(msgs))
+		}
+	}
+}
+
+func TestStartTradingBotUseCase_Execute_PublishesStartedEvent(t *testing.T) {
+	tradingBotRepo := repository.NewTradeBotRepositoryInMemory()
+	decisionLogRepo := repository.NewTradingDecisionLogRepositoryInMemory()
+	broker := &recordingLifecycleBroker{}
+	useCase := NewStartTradingBotUseCaseWithMessaging(tradingBotRepo, decisionLogRepo, external.NewBinanceClientFake(), broker, "test-exchange")
+
+	bot := createTestTradingBot()
+	if err := tradingBotRepo.Save(bot); err != nil {
+		t.Fatalf("failed to save bot: %v", err)
+	}
+
+	if err := useCase.Execute(InputStartTradingBot{TradingBotId: bot.Id.GetValue()}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	msgs, exchanges := broker.messagesWithKey("trading_bot.started")
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 trading_bot.started event, got %d", len(msgs))
+	}
+	if exchanges[0] != "test-exchange" {
+		t.Errorf("expected exchange test-exchange, got %s", exchanges[0])
+	}
+	assertLifecyclePayload(t, msgs[0], bot)
+}
+
+func TestStartTradingBotUseCase_Execute_SkipNotification(t *testing.T) {
+	tradingBotRepo := repository.NewTradeBotRepositoryInMemory()
+	decisionLogRepo := repository.NewTradingDecisionLogRepositoryInMemory()
+	broker := &recordingLifecycleBroker{}
+	useCase := NewStartTradingBotUseCaseWithMessaging(tradingBotRepo, decisionLogRepo, external.NewBinanceClientFake(), broker, "test-exchange")
+
+	bot := createTestTradingBot()
+	if err := tradingBotRepo.Save(bot); err != nil {
+		t.Fatalf("failed to save bot: %v", err)
+	}
+
+	if err := useCase.Execute(InputStartTradingBot{TradingBotId: bot.Id.GetValue(), SkipNotification: true}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if msgs, _ := broker.messagesWithKey("trading_bot.started"); len(msgs) != 0 {
+		t.Errorf("expected no trading_bot.started event, got %d", len(msgs))
+	}
+}
+
+func TestStartTradingBotUseCase_Execute_PublishFailureDoesNotFailStart(t *testing.T) {
+	tradingBotRepo := repository.NewTradeBotRepositoryInMemory()
+	decisionLogRepo := repository.NewTradingDecisionLogRepositoryInMemory()
+	broker := &recordingLifecycleBroker{publishErr: errors.New("broker down")}
+	useCase := NewStartTradingBotUseCaseWithMessaging(tradingBotRepo, decisionLogRepo, external.NewBinanceClientFake(), broker, "test-exchange")
+
+	bot := createTestTradingBot()
+	if err := tradingBotRepo.Save(bot); err != nil {
+		t.Fatalf("failed to save bot: %v", err)
+	}
+
+	if err := useCase.Execute(InputStartTradingBot{TradingBotId: bot.Id.GetValue()}); err != nil {
+		t.Fatalf("expected start to succeed despite publish failure, got %v", err)
+	}
+
+	stored, _ := tradingBotRepo.GetTradeByID(bot.Id.GetValue())
+	if stored.GetStatus() != entity.StatusRunning {
+		t.Errorf("expected status %s, got %s", entity.StatusRunning, stored.GetStatus())
+	}
+}
+
+func TestInputStartTradingBot_SkipNotificationNotDecodedFromJSON(t *testing.T) {
+	var input InputStartTradingBot
+	if err := json.Unmarshal([]byte(`{"bot_id":"abc","SkipNotification":true,"skip_notification":true}`), &input); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if input.SkipNotification {
+		t.Error("expected SkipNotification to be ignored when decoding JSON")
+	}
+}
+
+// panickingMarketDataSource simulates a bug that panics inside the strategy loop.
+type panickingMarketDataSource struct{}
+
+func (panickingMarketDataSource) GetMarketData(symbol string, intervalSeconds int) ([]vo.Kline, error) {
+	panic("simulated strategy loop panic")
+}
+
+func (panickingMarketDataSource) GetCurrentTime() time.Time {
+	return time.Now()
+}
+
+// alwaysContinueExecutionContext is a no-op execution context that never asks the loop to stop.
+type alwaysContinueExecutionContext struct{}
+
+func (alwaysContinueExecutionContext) ExecuteTrade(decision entity.TradingDecision, bot *entity.TradingBot, currentPrice float64, timestamp time.Time) error {
+	return nil
+}
+
+func (alwaysContinueExecutionContext) OnDecisionMade(decisionLog *entity.TradingDecisionLog) error {
+	return nil
+}
+
+func (alwaysContinueExecutionContext) ShouldContinue() bool {
+	return true
+}
+
+func TestStartTradingBotUseCase_RunStrategyLoop_RecoversPanicAndStopsBot(t *testing.T) {
+	tradingBotRepo := repository.NewTradeBotRepositoryInMemory()
+	decisionLogRepo := repository.NewTradingDecisionLogRepositoryInMemory()
+	useCase := NewStartTradingBotUseCaseWithServices(tradingBotRepo, decisionLogRepo, external.NewBinanceClientFake(), panickingMarketDataSource{}, alwaysContinueExecutionContext{})
+	broker := &recordingLifecycleBroker{}
+	useCase.messageBroker = broker
+	useCase.exchangeName = "test-exchange"
+
+	bot := saveRunningTestBot(t, tradingBotRepo)
+
+	// Runs synchronously: an unrecovered panic here would crash the test binary.
+	useCase.runStrategyLoop(bot)
+
+	stored, _ := tradingBotRepo.GetTradeByID(bot.Id.GetValue())
+	if stored.GetStatus() != entity.StatusStopped {
+		t.Errorf("expected bot to be %s after panic, got %s", entity.StatusStopped, stored.GetStatus())
+	}
+
+	running, _ := tradingBotRepo.GetTradingBotsByStatus(entity.StatusRunning)
+	if len(running) != 0 {
+		t.Errorf("expected no RUNNING bots for auto-recovery, got %d", len(running))
+	}
+
+	msgs, _ := broker.messagesWithKey("trading_bot.stopped")
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 trading_bot.stopped event, got %d", len(msgs))
+	}
+	assertLifecyclePayload(t, msgs[0], bot)
+}
+
+func TestStartTradingBotUseCase_RunStrategyLoop_RecoversPanicWithNilRepositories(t *testing.T) {
+	useCase := NewStartTradingBotUseCaseWithServices(nil, nil, nil, panickingMarketDataSource{}, alwaysContinueExecutionContext{})
+
+	bot := createTestTradingBot()
+	_ = bot.Start()
+
+	// The nil repository makes the loop panic; the recovery must not panic again.
+	useCase.runStrategyLoop(bot)
 }
 
 // Note: Order placement tests moved to LiveTradingExecutionContext tests

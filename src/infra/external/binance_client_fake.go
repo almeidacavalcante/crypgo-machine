@@ -49,6 +49,11 @@ type BinanceClientFake struct {
 	shouldFailKlines bool
 	shouldFailOrder  bool
 	orderCounter     int
+	// executedQuantityOverride, when non-empty, is reported as the executed
+	// quantity of every order instead of the quantity that was sent
+	executedQuantityOverride string
+	// lastOrderQuantity is the quantity string sent with the most recent order
+	lastOrderQuantity string
 }
 
 func NewBinanceClientFake() *BinanceClientFake {
@@ -71,6 +76,18 @@ func (f *BinanceClientFake) SetShouldFailKlines(shouldFail bool) {
 // SetShouldFailOrder makes the order service fail
 func (f *BinanceClientFake) SetShouldFailOrder(shouldFail bool) {
 	f.shouldFailOrder = shouldFail
+}
+
+// SetExecutedQuantityOverride makes orders report the given executed quantity
+// (for example to simulate a partial fill). An empty string restores the default,
+// where the executed quantity equals the quantity sent.
+func (f *BinanceClientFake) SetExecutedQuantityOverride(quantity string) {
+	f.executedQuantityOverride = quantity
+}
+
+// GetLastOrderQuantity returns the quantity string sent with the most recent order
+func (f *BinanceClientFake) GetLastOrderQuantity() string {
+	return f.lastOrderQuantity
 }
 
 // NewKlinesService returns a fake klines service
@@ -155,7 +172,7 @@ func (s *FakeKlinesService) generateDefaultKlines() []*binance.Kline {
 	if limit == 0 {
 		limit = 50 // Default limit
 	}
-	
+
 	klines := make([]*binance.Kline, limit)
 	basePrice := 100.0
 
@@ -209,13 +226,22 @@ func (s *FakeCreateOrderService) Do(ctx context.Context) (*binance.CreateOrderRe
 	}
 
 	s.client.orderCounter++
+	s.client.lastOrderQuantity = s.quantity
+
+	// A filled market order executes the full quantity that was sent
+	executedQuantity := s.quantity
+	if s.client.executedQuantityOverride != "" {
+		executedQuantity = s.client.executedQuantityOverride
+	}
 
 	return &binance.CreateOrderResponse{
-		Symbol:  s.symbol,
-		OrderID: int64(s.client.orderCounter),
-		Side:    s.side,
-		Status:  binance.OrderStatusTypeFilled,
-		Type:    s.orderType,
+		Symbol:           s.symbol,
+		OrderID:          int64(s.client.orderCounter),
+		OrigQuantity:     s.quantity,
+		ExecutedQuantity: executedQuantity,
+		Side:             s.side,
+		Status:           binance.OrderStatusTypeFilled,
+		Type:             s.orderType,
 	}, nil
 }
 
@@ -242,7 +268,7 @@ func (s *FakeGetAccountService) Do(ctx context.Context) (*binance.Account, error
 // CreateWhipsawKlines creates klines that will cause whipsaw signals
 func CreateWhipsawKlines() []*binance.Kline {
 	baseKlines := []*binance.Kline{}
-	
+
 	// Generate 40 base klines with stable trend
 	basePrice := 800.0
 	for i := 0; i < 40; i++ {
@@ -256,7 +282,7 @@ func CreateWhipsawKlines() []*binance.Kline {
 			CloseTime: 1640995200000 + int64(i*3600000),
 		})
 	}
-	
+
 	// Add whipsaw klines at the end
 	baseKlines = append(baseKlines, []*binance.Kline{
 		{Open: "830.0", Close: "831.0", High: "832.0", Low: "829.0", Volume: "100", CloseTime: 1641139200000},
@@ -267,14 +293,14 @@ func CreateWhipsawKlines() []*binance.Kline {
 		{Open: "834.5", Close: "834.0", High: "835.0", Low: "833.0", Volume: "100", CloseTime: 1641157200000},
 		{Open: "834.0", Close: "833.5", High: "834.5", Low: "832.0", Volume: "100", CloseTime: 1641160800000},
 	}...)
-	
+
 	return baseKlines
 }
 
 // CreateStrongTrendKlines creates klines with strong trend and sufficient spread
 func CreateStrongTrendKlines() []*binance.Kline {
 	baseKlines := []*binance.Kline{}
-	
+
 	// Generate 40 base klines with moderate trend
 	basePrice := 700.0
 	for i := 0; i < 40; i++ {
@@ -288,7 +314,7 @@ func CreateStrongTrendKlines() []*binance.Kline {
 			CloseTime: 1640995200000 + int64(i*3600000),
 		})
 	}
-	
+
 	// Add strong trend klines at the end
 	baseKlines = append(baseKlines, []*binance.Kline{
 		{Open: "760.0", Close: "770.0", High: "771.0", Low: "759.0", Volume: "100", CloseTime: 1641139200000},
@@ -299,7 +325,7 @@ func CreateStrongTrendKlines() []*binance.Kline {
 		{Open: "810.0", Close: "820.0", High: "821.0", Low: "809.0", Volume: "100", CloseTime: 1641157200000},
 		{Open: "820.0", Close: "830.0", High: "831.0", Low: "819.0", Volume: "100", CloseTime: 1641160800000},
 	}...)
-	
+
 	return baseKlines
 }
 
@@ -436,7 +462,7 @@ func (s *FakeGetExchangeInfoService) Do(ctx context.Context) (*binance.ExchangeI
 						"tickSize":   "0.01000000",
 					},
 					{
-						"filterType": "MIN_NOTIONAL",
+						"filterType":  "MIN_NOTIONAL",
 						"minNotional": "10.00000000",
 					},
 				},
@@ -458,7 +484,7 @@ func (s *FakeGetExchangeInfoService) Do(ctx context.Context) (*binance.ExchangeI
 						"tickSize":   "0.01000000",
 					},
 					{
-						"filterType": "MIN_NOTIONAL",
+						"filterType":  "MIN_NOTIONAL",
 						"minNotional": "10.00000000",
 					},
 				},
@@ -480,7 +506,7 @@ func (s *FakeGetExchangeInfoService) Do(ctx context.Context) (*binance.ExchangeI
 						"tickSize":   "0.00100000",
 					},
 					{
-						"filterType": "MIN_NOTIONAL",
+						"filterType":  "MIN_NOTIONAL",
 						"minNotional": "10.00000000",
 					},
 				},
@@ -502,7 +528,29 @@ func (s *FakeGetExchangeInfoService) Do(ctx context.Context) (*binance.ExchangeI
 						"tickSize":   "0.10000000",
 					},
 					{
-						"filterType": "MIN_NOTIONAL",
+						"filterType":  "MIN_NOTIONAL",
+						"minNotional": "10.00000000",
+					},
+				},
+			},
+			{
+				Symbol: "BTCBRL",
+				Status: "TRADING",
+				Filters: []map[string]interface{}{
+					{
+						"filterType": "LOT_SIZE",
+						"minQty":     "0.00001000",
+						"maxQty":     "9000.00000000",
+						"stepSize":   "0.00001000",
+					},
+					{
+						"filterType": "PRICE_FILTER",
+						"minPrice":   "1.00000000",
+						"maxPrice":   "10000000.00000000",
+						"tickSize":   "1.00000000",
+					},
+					{
+						"filterType":  "NOTIONAL",
 						"minNotional": "10.00000000",
 					},
 				},

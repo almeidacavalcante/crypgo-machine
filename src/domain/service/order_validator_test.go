@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypgo-machine/src/infra/external"
+	"strings"
 	"testing"
 )
 
@@ -46,10 +47,20 @@ func TestOrderValidatorService_ValidateOrder(t *testing.T) {
 			symbol:              "XRPBRL",
 			quantity:            0.05,
 			price:               20.0,
-			expectValid:         true,
+			expectValid:         false,
 			expectAdjustment:    true,
-			expectedAdjustedQty: 0.1,
-			description:         "Should adjust 0.05 up to minimum 0.1",
+			expectedAdjustedQty: 0,
+			description:         "0.05 is below the minimum 0.1 and must be refused, not rounded up",
+		},
+		{
+			name:                "XRPBRL below minimum quantity with enough notional",
+			symbol:              "XRPBRL",
+			quantity:            0.05,
+			price:               250.0, // 0.1 * 250 = 25 BRL would pass notional if rounded up
+			expectValid:         false,
+			expectAdjustment:    true,
+			expectedAdjustedQty: 0,
+			description:         "Rounding 0.05 up to 0.1 would order more than requested; must be refused",
 		},
 		{
 			name:                "XRPBRL insufficient notional",
@@ -64,12 +75,22 @@ func TestOrderValidatorService_ValidateOrder(t *testing.T) {
 		{
 			name:                "BTCUSDT valid small quantity",
 			symbol:              "BTCUSDT",
-			quantity:            0.00001,
-			price:               50000.0,
+			quantity:            0.00025,
+			price:               50000.0, // 0.00025 * 50000 = 12.5 USDT >= 10.0 minimum
 			expectValid:         true,
 			expectAdjustment:    false,
-			expectedAdjustedQty: 0.00001,
+			expectedAdjustedQty: 0.00025,
 			description:         "Valid small BTC quantity",
+		},
+		{
+			name:                "BTCUSDT insufficient notional",
+			symbol:              "BTCUSDT",
+			quantity:            0.00001,
+			price:               50000.0, // 0.00001 * 50000 = 0.5 USDT < 10.0 minimum
+			expectValid:         false,
+			expectAdjustment:    false,
+			expectedAdjustedQty: 0.00001,
+			description:         "Step-compliant quantity below minimum notional must be refused",
 		},
 		{
 			name:                "SOLBRL needs rounding",
@@ -101,8 +122,14 @@ func TestOrderValidatorService_ValidateOrder(t *testing.T) {
 				t.Errorf("Expected adjustment=%t, got %t (%.8f → %.8f)", tc.expectAdjustment, wasAdjusted, result.OriginalQuantity, result.AdjustedQuantity)
 			}
 
-			// Check adjusted quantity value
-			if tc.expectValid && result.AdjustedQuantity != tc.expectedAdjustedQty {
+			// An adjustment must never increase the requested quantity
+			if result.AdjustedQuantity > result.OriginalQuantity {
+				t.Errorf("Adjusted quantity %.8f exceeds requested quantity %.8f", result.AdjustedQuantity, result.OriginalQuantity)
+			}
+
+			// Check adjusted quantity value. Exact comparison on purpose: the
+			// adjusted quantity is rounded to the step precision.
+			if result.AdjustedQuantity != tc.expectedAdjustedQty {
 				t.Errorf("Expected adjusted quantity %.8f, got %.8f", tc.expectedAdjustedQty, result.AdjustedQuantity)
 			}
 
@@ -127,14 +154,14 @@ func TestOrderValidatorService_ValidateAndAdjustQuantity(t *testing.T) {
 	validator := NewOrderValidatorService(exchangeInfoService)
 
 	testCases := []struct {
-		name            string
-		symbol          string
-		quantity        float64
-		price           float64
-		expectError     bool
-		expectedQty     float64
-		expectedFormat  string
-		description     string
+		name           string
+		symbol         string
+		quantity       float64
+		price          float64
+		expectError    bool
+		expectedQty    float64
+		expectedFormat string
+		description    string
 	}{
 		{
 			name:           "XRPBRL successful adjustment",
@@ -149,12 +176,22 @@ func TestOrderValidatorService_ValidateAndAdjustQuantity(t *testing.T) {
 		{
 			name:           "BTCUSDT no adjustment needed",
 			symbol:         "BTCUSDT",
-			quantity:       0.00001,
+			quantity:       0.00025,
 			price:          50000.0,
 			expectError:    false,
-			expectedQty:    0.00001,
-			expectedFormat: "0.00001",
+			expectedQty:    0.00025,
+			expectedFormat: "0.00025",
 			description:    "Should pass through valid BTCUSDT quantity",
+		},
+		{
+			name:           "BTCUSDT insufficient notional",
+			symbol:         "BTCUSDT",
+			quantity:       0.00001,
+			price:          50000.0,
+			expectError:    true,
+			expectedQty:    0.00001,
+			expectedFormat: "0.000010",
+			description:    "Should fail: 0.5 USDT is below the 10 USDT minimum notional",
 		},
 		{
 			name:           "XRPBRL insufficient notional",
@@ -163,7 +200,7 @@ func TestOrderValidatorService_ValidateAndAdjustQuantity(t *testing.T) {
 			price:          5.0,
 			expectError:    true,
 			expectedQty:    0.1,
-			expectedFormat: "0.1",
+			expectedFormat: "0.100000",
 			description:    "Should fail due to insufficient notional value",
 		},
 	}
@@ -178,6 +215,17 @@ func TestOrderValidatorService_ValidateAndAdjustQuantity(t *testing.T) {
 			}
 			if !tc.expectError && err != nil {
 				t.Errorf("Unexpected error: %v", err)
+			}
+
+			// On error the unadjusted quantity is returned, formatted with %.6f
+			// for logging only.
+			if tc.expectError {
+				if adjustedQty != tc.expectedQty {
+					t.Errorf("Expected unadjusted quantity %.8f on error, got %.8f", tc.expectedQty, adjustedQty)
+				}
+				if formattedQty != tc.expectedFormat {
+					t.Errorf("Expected formatted quantity '%s' on error, got '%s'", tc.expectedFormat, formattedQty)
+				}
 			}
 
 			// Check results for successful cases
@@ -203,44 +251,51 @@ func TestOrderValidatorService_ValidateOrderBeforePlacement(t *testing.T) {
 	validator := NewOrderValidatorService(exchangeInfoService)
 
 	testCases := []struct {
-		name              string
-		symbol            string
-		quantity          float64
-		price             float64
-		expectProceed     bool
-		expectWarnings    bool
+		name                string
+		symbol              string
+		quantity            float64
+		price               float64
+		expectProceed       bool
+		expectWarnings      bool
+		warningContains     string
 		expectedAdjustedQty float64
-		description       string
+		expectedFormatted   string
+		description         string
 	}{
 		{
-			name:              "Valid order - should proceed",
-			symbol:            "XRPBRL",
-			quantity:          10.0,
-			price:             20.0,
-			expectProceed:     true,
-			expectWarnings:    false,
+			name:                "Valid order - should proceed",
+			symbol:              "XRPBRL",
+			quantity:            10.0,
+			price:               20.0,
+			expectProceed:       true,
+			expectWarnings:      false,
 			expectedAdjustedQty: 10.0,
-			description:       "Perfect valid order should proceed without warnings",
+			expectedFormatted:   "10.0",
+			description:         "Perfect valid order should proceed without warnings",
 		},
 		{
-			name:              "Needs adjustment - should proceed with warning",
-			symbol:            "XRPBRL",
-			quantity:          10.121457,
-			price:             19.76,
-			expectProceed:     true,
-			expectWarnings:    true,
+			name:                "Needs adjustment - should proceed with warning",
+			symbol:              "XRPBRL",
+			quantity:            10.121457,
+			price:               19.76,
+			expectProceed:       true,
+			expectWarnings:      true,
+			warningContains:     "adjusted",
 			expectedAdjustedQty: 10.1,
-			description:       "Should proceed with quantity adjustment and warning",
+			expectedFormatted:   "10.1",
+			description:         "Should proceed with quantity adjustment and warning",
 		},
 		{
-			name:              "Invalid order - should not proceed",
-			symbol:            "XRPBRL",
-			quantity:          0.1,
-			price:             5.0,
-			expectProceed:     false,
-			expectWarnings:    false,
+			name:                "Invalid order - should not proceed",
+			symbol:              "XRPBRL",
+			quantity:            0.1,
+			price:               5.0,
+			expectProceed:       false,
+			expectWarnings:      true, // refusal reasons are returned in warnings
+			warningContains:     "notional",
 			expectedAdjustedQty: 0.1,
-			description:       "Invalid order should not proceed",
+			expectedFormatted:   "0.100000",
+			description:         "Invalid order should not proceed and should report why",
 		},
 	}
 
@@ -259,9 +314,19 @@ func TestOrderValidatorService_ValidateOrderBeforePlacement(t *testing.T) {
 				t.Errorf("Expected warnings=%t, got %t (warnings: %v)", tc.expectWarnings, hasWarnings, warnings)
 			}
 
-			// Check adjusted quantity for successful cases
-			if shouldProceed && adjustedQty != tc.expectedAdjustedQty {
+			if tc.warningContains != "" && !strings.Contains(strings.Join(warnings, " "), tc.warningContains) {
+				t.Errorf("Expected warnings to mention %q, got %v", tc.warningContains, warnings)
+			}
+
+			// Check adjusted quantity (unadjusted quantity when refused)
+			if adjustedQty != tc.expectedAdjustedQty {
 				t.Errorf("Expected adjusted quantity %.8f, got %.8f", tc.expectedAdjustedQty, adjustedQty)
+			}
+			if adjustedQty > tc.quantity {
+				t.Errorf("Adjusted quantity %.8f exceeds requested quantity %.8f", adjustedQty, tc.quantity)
+			}
+			if formattedQty != tc.expectedFormatted {
+				t.Errorf("Expected formatted quantity '%s', got '%s'", tc.expectedFormatted, formattedQty)
 			}
 
 			// Log results
@@ -317,13 +382,13 @@ func TestOrderValidatorService_GetSymbolInfo(t *testing.T) {
 			}
 
 			t.Logf("✅ %s symbol info retrieved successfully", symbol)
-			
+
 			// Log some details for verification
 			if lotSize, ok := info["lot_size"].(map[string]interface{}); ok {
-				t.Logf("   Lot Size: min=%.8f, max=%.0f, step=%.8f", 
+				t.Logf("   Lot Size: min=%.8f, max=%.0f, step=%.8f",
 					lotSize["min_qty"], lotSize["max_qty"], lotSize["step_size"])
 			}
-			
+
 			if minNotional, ok := info["min_notional"].(float64); ok {
 				t.Logf("   Min Notional: %.2f", minNotional)
 			}
@@ -362,7 +427,7 @@ func TestOrderValidatorService_ProductionScenario(t *testing.T) {
 	// The adjusted quantity should be valid for XRPBRL (step size 0.1)
 	expectedAdjusted := 10.1
 	tolerance := 1e-6
-	if result.AdjustedQuantity < expectedAdjusted - tolerance || result.AdjustedQuantity > expectedAdjusted + tolerance {
+	if result.AdjustedQuantity < expectedAdjusted-tolerance || result.AdjustedQuantity > expectedAdjusted+tolerance {
 		t.Errorf("Expected adjusted quantity %.1f, got %.8f", expectedAdjusted, result.AdjustedQuantity)
 	}
 
@@ -382,7 +447,7 @@ func TestOrderValidatorService_ProductionScenario(t *testing.T) {
 		t.Error("Expected warnings about quantity adjustment")
 	}
 
-	if adjustedQty < 10.1 - tolerance || adjustedQty > 10.1 + tolerance {
+	if adjustedQty < 10.1-tolerance || adjustedQty > 10.1+tolerance {
 		t.Errorf("Expected final adjusted quantity 10.1, got %.8f", adjustedQty)
 	}
 

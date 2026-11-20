@@ -2,7 +2,7 @@
   "symbol": "BTCUSDT",
   "quantity": 0.001,
   "strategy": "RSI",
-  "strategy_params": {
+  "params": {
     "Period": 14,
     "OversoldThreshold": 30.0,
     "OverboughtThreshold": 70.0

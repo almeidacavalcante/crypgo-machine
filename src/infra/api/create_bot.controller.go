@@ -28,34 +28,41 @@ func (c *CreateTradingBotController) Handle(w http.ResponseWriter, r *http.Reque
 	switch rawInput.Strategy {
 	case "MovingAverage":
 		var m service.MovingAverageParams
-		// Marshal/Unmarshal: transforma map em struct
-		b, _ := json.Marshal(rawInput.Params)
-		if err := json.Unmarshal(b, &m); err != nil {
+		if err := decodeStrategyParams(rawInput.Params, &m); err != nil {
 			http.Error(w, "invalid params for MovingAverage", http.StatusBadRequest)
 			return
 		}
 		params = m
+	case "RSI":
+		var rsi service.RSIParams
+		if err := decodeStrategyParams(rawInput.Params, &rsi); err != nil {
+			http.Error(w, "invalid params for RSI", http.StatusBadRequest)
+			return
+		}
+		params = rsi
 	default:
 		http.Error(w, "unknown strategy", http.StatusBadRequest)
 		return
 	}
 
-	input := usecase.InputCreateTradingBot{
-		Symbol:                   rawInput.Symbol,
-		Quantity:                 rawInput.Quantity,
-		Strategy:                 rawInput.Strategy,
-		Params:                   params,
-		IntervalSeconds:          rawInput.IntervalSeconds,
-		InitialCapital:           rawInput.InitialCapital,
-		TradeAmount:              rawInput.TradeAmount,
-		Currency:                 rawInput.Currency,
-		TradingFees:              rawInput.TradingFees,
-		MinimumProfitThreshold:   rawInput.MinimumProfitThreshold,
-	}
+	// Copy the whole decoded input and only replace Params with the typed struct,
+	// so fields added to InputCreateTradingBot are never silently dropped.
+	input := rawInput
+	input.Params = params
 
 	if err := c.CreateTradingBot.Execute(input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// decodeStrategyParams converts the generic JSON params (decoded as a map) into
+// the typed params struct expected by the strategy factory.
+func decodeStrategyParams(raw interface{}, target interface{}) error {
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, target)
 }

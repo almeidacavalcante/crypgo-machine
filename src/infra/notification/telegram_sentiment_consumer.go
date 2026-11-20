@@ -144,7 +144,7 @@ func (t *TelegramSentimentConsumer) formatSentimentAnalysisMessage(payload sched
 
 func (t *TelegramSentimentConsumer) formatSentimentSuggestionMessage(payload scheduler.SentimentNotificationPayload) string {
 	sentimentEmoji := t.getSentimentEmoji(payload.Sentiment)
-	
+
 	message := fmt.Sprintf(
 		"🔔 <b>Nova Sugestão de Sentiment</b>\n\n"+
 			"%s <b>Sentiment</b>: %s\n"+
@@ -277,7 +277,7 @@ func (t *TelegramSentimentConsumer) SendTestSentimentNotification() error {
 		Suggestions: service.SentimentTradingSuggestions{
 			TradeAmountMultiplier:  1.2,
 			MinimumProfitThreshold: 1.0,
-			IntervalSeconds:        600,
+			IntervalSeconds:        900,
 			Recommendation:         "normal_plus",
 			ReasoningText:          "Sentiment positivo - ligeiro aumento na agressividade",
 		},
