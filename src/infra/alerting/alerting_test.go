@@ -82,6 +82,7 @@ func TestTelegramSender_ErrorsNeverLeakTheToken(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
+		sender.sleep = func(time.Duration) {}
 
 		err = sender.Send("hello")
 		if err == nil {
@@ -103,6 +104,7 @@ func TestTelegramSender_ErrorsNeverLeakTheToken(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
+		sender.sleep = func(time.Duration) {}
 
 		err = sender.Send("hello")
 		if err == nil || !strings.Contains(err.Error(), "502") {
@@ -112,6 +114,84 @@ func TestTelegramSender_ErrorsNeverLeakTheToken(t *testing.T) {
 			t.Errorf("the error must not leak the bot token: %v", err)
 		}
 	})
+}
+
+func TestTelegramSender_RetriesTransientFailures(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte("<html>bad gateway</html>"))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
+	}))
+	defer server.Close()
+
+	sender, err := NewTelegramSenderWithBaseURL(server.URL, server.Client(), testToken, "42")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	var pauses []time.Duration
+	sender.sleep = func(d time.Duration) { pauses = append(pauses, d) }
+
+	if err := sender.Send("hello"); err != nil {
+		t.Fatalf("expected the third attempt to succeed, got %v", err)
+	}
+	if calls != 3 {
+		t.Errorf("expected 3 attempts, got %d", calls)
+	}
+	if len(pauses) != 2 || pauses[0] != telegramRetryDelay || pauses[1] != 2*telegramRetryDelay {
+		t.Errorf("expected growing pauses between attempts, got %v", pauses)
+	}
+}
+
+func TestTelegramSender_GivesUpAfterMaxAttempts(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"ok":false,"error_code":429,"description":"Too Many Requests"}`))
+	}))
+	defer server.Close()
+
+	sender, err := NewTelegramSenderWithBaseURL(server.URL, server.Client(), testToken, "42")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	sender.sleep = func(time.Duration) {}
+
+	err = sender.Send("hello")
+	if err == nil || !strings.Contains(err.Error(), "gave up after 3 attempts") {
+		t.Fatalf("expected the sender to give up, got %v", err)
+	}
+	if calls != telegramMaxAttempts {
+		t.Errorf("expected %d attempts, got %d", telegramMaxAttempts, calls)
+	}
+}
+
+func TestTelegramSender_DoesNotRetryRejections(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"ok":false,"error_code":401,"description":"Unauthorized"}`))
+	}))
+	defer server.Close()
+
+	sender, err := NewTelegramSenderWithBaseURL(server.URL, server.Client(), testToken, "42")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	sender.sleep = func(time.Duration) { t.Error("a rejected message must not be retried") }
+
+	if err := sender.Send("hello"); err == nil {
+		t.Fatal("expected an error for a rejected message")
+	}
+	if calls != 1 {
+		t.Errorf("expected a single attempt, got %d", calls)
+	}
 }
 
 func TestNewTelegramSender_RequiresTokenAndChat(t *testing.T) {

@@ -135,6 +135,7 @@ go run cmd/backtest/main.go -start=2024-01-01 -end=2024-01-31 -symbol=SOLBRL -fa
 - Code: `vo.FuturesBasis` (math), `src/application/basismonitor` (use case, ports, alert text catalog for `pt-BR` and `en`), `src/infra/deribit` (market data), `src/infra/alerting` (stdlib Telegram sender, alert state stores). These packages import only the standard library and `domain/vo`; keep it that way so the scheduled job stays fast.
 - Basis = best bid of the future over the index; annualized with simple (not compounded) scaling. The net figure subtracts the futures leg only (taker fee from the API plus the 0.025% delivery fee on monthly contracts, hardcoded in `deribit_client.go`).
 - Repeat alerts are held back for `BASIS_COOLDOWN_HOURS` unless the best basis rose by `BASIS_REALERT_STEP_PCT` points. The last alert is kept in a JSON file that the workflow persists with `actions/cache`.
+- Telegram delivery retries transient failures (network errors, HTTP 429 and 5xx) up to 3 times; a failed delivery fails the job and the next run tries again, because the cooldown only starts after a successful send.
 - The Telegram bot token is part of the request URL, so `TelegramSender` strips the URL from errors: this repository is public and so are its job logs.
 
 ```bash
@@ -267,7 +268,7 @@ Local helpers: `scripts/monitor-logs.sh`, `scripts/monitor-dashboard.sh` (tmux),
 Verified in code on 2026-11-20. Check before relying on any of these being fixed. The tracked bug list, with per-bug detail and status, lives in a Claude artifact database (collection `bugs`).
 
 - **The VPS did not respond on 2026-11-20.** `31.97.249.4` answered neither ping nor ports 22, 80, 443, 8080 and 8081, and the `trading.` and `n8n.` subdomains no longer resolve. Confirm in the Hostinger panel that it still exists before relying on anything under "Deployment"; a push to `main` still triggers `deploy.yml` against it.
-- **The basis monitor has not run on GitHub Actions yet.** Whether Deribit answers GitHub-hosted runners (US addresses) is unverified until the first run.
+- **The `Deploy to Production` workflow is disabled** (manually, on 2026-11-20) so merges to `main` do not try to deploy to the unreachable VPS. Re-enable with `gh workflow enable deploy.yml`.
 - **Production needs new env vars before the next deploy.** `AUTH_EMAIL`, `AUTH_PASSWORD` and `JWT_SECRET` are now mandatory; `.env.production` on the VPS does not define them yet, so the app will refuse to boot there until they are added.
 - **Old credentials are still in git history**, and the tracked `test-build` binary contains the old password. Rotate the password and JWT secret and remove the binary.
 - **Passwords are compared in plaintext** (constant-time) in `auth_usecase.go`; a bcrypt hash would need `golang.org/x/crypto`.

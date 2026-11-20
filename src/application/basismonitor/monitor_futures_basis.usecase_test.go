@@ -301,8 +301,8 @@ func TestExecute_FailedAlertIsNotRecorded(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "telegram is down") {
 		t.Fatalf("expected the notifier error to be returned, got %v", err)
 	}
-	if result.Outcome == OutcomeAlertSent {
-		t.Error("a failed alert must not be reported as sent")
+	if result.Outcome != OutcomeAlertFailed {
+		t.Errorf("expected outcome %s, got %s", OutcomeAlertFailed, result.Outcome)
 	}
 	if store.saves != 0 {
 		t.Errorf("a failed alert must not start the cooldown, got %d saves", store.saves)
